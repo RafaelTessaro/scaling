@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Anteprojeto "Sobrado 4x20" - gerador dos desenhos.
+Anteprojeto "Casa Térrea 4x20" - gerador dos desenhos.
 
 Um único modelo geométrico (em metros) alimenta todos os produtos:
-plantas, corte, fachada, quadro de áreas, SVG, DXF, HTML e PDF.
-Para alterar o projeto, mude as coordenadas aqui e rode de novo:
+planta baixa, planta de cobertura, corte, fachada, quadros, SVG, DXF,
+página HTML, prancha A3 em PDF e README. Para alterar o projeto, mude
+as coordenadas aqui e rode de novo:
 
     pip install shapely ezdxf
     python3 gerar_projeto.py
@@ -19,9 +20,8 @@ import html
 import math
 import os
 import subprocess
-import sys
 
-from shapely.geometry import MultiPolygon, Polygon, box
+from shapely.geometry import LineString, Polygon, box
 from shapely.ops import unary_union
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
@@ -31,34 +31,46 @@ OUT = os.path.join(RAIZ, "projeto")
 # Parâmetros gerais
 # --------------------------------------------------------------------------
 LOTE_W, LOTE_L = 4.00, 20.00
-E = 0.15                  # paredes de divisa / externas
 GARAGEM_L = 5.50          # comprimento da garagem (exigência do programa)
-FIM_CASA = 14.70          # fundo da edificação
-MURO_FUNDO = 19.85
 
-# Escada reta encostada na divisa esquerda
-N_ESPELHOS = 16
-ESPELHO = 0.18
-PISO_DEG = 0.28
-ESC_X0, ESC_X1 = 0.15, 1.05
-ESC_Y0 = 5.65
-ESC_Y1 = round(ESC_Y0 + (N_ESPELHOS - 1) * PISO_DEG, 2)   # 9,85
-VAZIO_Y0 = 6.45           # início do vazio sobre a escada (altura livre >= 2,10)
+# faixas da largura
+XA0, XA1 = 0.15, 1.00     # corredor (0,85 m)
+XB0, XB1 = 1.10, 3.85     # faixa dos cômodos (2,75 m)
+XBAN = (2.40, 2.50)       # parede entre os dois banheiros
+
+# cadeia da profundidade (ver checagem no README)
+Y_FRENTE = (5.50, 5.65)
+Y_SALA = (5.65, 10.35)
+Y_LAV = (10.45, 11.85)
+Y_Q1 = (11.95, 14.80)
+Y_BAN = (14.90, 17.10)
+Y_Q2 = (17.20, 19.85)
+Y_FUNDO = (19.85, 20.00)
 
 # Níveis
 Z_CALCADA = 0.00
 Z_GARAGEM = 0.05
-Z_TERREO = 0.15
-Z_SUP = round(Z_TERREO + N_ESPELHOS * ESPELHO, 2)          # 3,03
+Z_PISO = 0.15
 PE_DIREITO = 2.70
-Z_LAJE_INF = round(Z_SUP - 0.18, 2)                        # 2,85 (fundo da laje)
-Z_FORRO = round(Z_SUP + PE_DIREITO, 2)                     # 5,73
-Z_LAJE_COB = round(Z_FORRO + 0.12, 2)                      # 5,85
-Z_TELHA = 6.20
-Z_PLATIBANDA = 6.60
-Z_VIGA_FRENTE = 2.55      # fundo da viga sobre o portão
+Z_FORRO = round(Z_PISO + PE_DIREITO, 2)     # 2,85
+Z_COB = 3.10              # cobertura plana (telha) / base das janelas dos sheds
+Z_VIDRO_TOPO = 3.90       # topo do vidro dos sheds
+Z_SHED = 4.05             # topo dos sheds
+Z_PLATIBANDA = 3.50
+Z_MURO = 2.80             # muros da garagem e pergolado
+Z_PORTAO = 2.20
 
-CORTE_X = 0.60            # posição do corte AA (passa pela escada)
+# Sheds: (nome, y do vidro, y do ponto baixo, x0 do vidro, x1 do vidro)
+SHEDS = [
+    ("shed 1", 7.90, Y_SALA[1], 0.75, 3.25),   # sala + cozinha
+    ("shed 2", 11.90, Y_Q1[1], 1.25, 3.25),    # suíte 1
+    ("shed 3", 17.15, Y_Q2[1], 0.75, 3.25),    # suíte 2
+]
+# Domus ventilados: (centro x, centro y, lado)
+DOMUS = [(2.10, 11.15, 0.80), (1.75, 16.68, 0.60), (3.18, 15.33, 0.60),
+         (0.575, 11.15, 0.50), (0.575, 16.00, 0.50)]
+
+CORTE_X = 2.00            # posição do corte AA
 
 
 def fmt(v, nd=2):
@@ -80,7 +92,6 @@ class Drawing:
         self.plano = plano
         self.items = []
         self.walls, self.muros, self.cuts = [], [], []
-        # vetor "para baixo na tela" e vetor do traço de cota, no mundo
         self.down = (1.0, 0.0) if plano else (0.0, -1.0)
         self.slash = (-1.0, 1.0) if plano else (1.0, 1.0)
 
@@ -119,33 +130,26 @@ class Drawing:
     def cut(self, x0, y0, x1, y1):
         self.cuts.append(box(x0, y0, x1, y1))
 
-    def finalize(self, wall_cls="wall"):
+    def finalize(self):
         holes = unary_union(self.cuts) if self.cuts else None
-        if self.walls:
-            g = unary_union(self.walls)
-            if holes is not None:
-                g = g.difference(holes)
-            self.area(g, wall_cls, layer=2)
-        if self.muros:
-            g = unary_union(self.muros)
-            if holes is not None:
-                g = g.difference(holes)
-            self.area(g, "muro", layer=2)
+        for geoms, cls in ((self.walls, "wall"), (self.muros, "muro")):
+            if geoms:
+                g = unary_union(geoms)
+                if holes is not None:
+                    g = g.difference(holes)
+                self.area(g, cls, layer=2)
 
-    # rótulo de ambiente: nome + linhas secundárias, empilhados "para baixo na tela"
     def label(self, p, nome, *linhas, size=0.24, sub=0.18):
+        """Rótulo de ambiente: nome + linhas secundárias, empilhados para baixo na tela."""
         dx, dy = self.down
-        n = 1 + len(linhas)
         alturas = [size * 1.25] + [sub * 1.3] * len(linhas)
-        total = sum(alturas)
-        off = -total / 2 + alturas[0] / 2
+        off = -sum(alturas) / 2 + alturas[0] / 2
         self.text((p[0] + dx * off, p[1] + dy * off), nome, size=size, cls="label")
         acc = off + alturas[0] / 2
         for i, ln in enumerate(linhas):
             acc += alturas[i + 1] / 2
             self.text((p[0] + dx * acc, p[1] + dy * acc), ln, size=sub, cls="sublabel")
             acc += alturas[i + 1] / 2
-        return n
 
 
 def ellipse_pts(cx, cy, rx, ry, n=28):
@@ -196,26 +200,11 @@ def window_h(d, x0, x1, ya, yb):
         d.line([(x0, ym + o), (x1, ym + o)], "glass")
 
 
-def sliding_h(d, x0, x1, ya, yb):
-    d.cut(x0, ya, x1, yb)
-    t = yb - ya
-    xm = (x0 + x1) / 2
-    y1, y2 = ya + t * 0.33, ya + t * 0.67
-    d.rect(x0, y1 - 0.022, xm + 0.06, y1 + 0.022, "leaf", layer=3)
-    d.rect(xm - 0.06, y2 - 0.022, x1, y2 + 0.022, "leaf", layer=3)
-
-
 def dim_chain(d, axis, pos, vals, ext=None, label_min=0.40, toff=None, size=0.17, labels=None):
-    """Cadeia de cotas.
-
-    axis=1: varia na 2ª coordenada, com a 1ª fixa em `pos`.
-    axis=0: varia na 1ª coordenada, com a 2ª fixa em `pos`.
-    ext: coordenada da borda do objeto para as linhas de chamada.
-    """
-    def P(v, w):  # (ao longo, perpendicular) -> mundo
+    """Cadeia de cotas. axis=1 varia na 2ª coordenada (1ª fixa em pos); axis=0 o contrário."""
+    def P(v, w):
         return (w, v) if axis == 1 else (v, w)
 
-    # texto vertical na tela?
     vertical = (d.plano and axis == 0) or (not d.plano and axis == 1)
     if toff is None:
         toff = -0.12 if (d.plano or vertical) else 0.12
@@ -231,81 +220,14 @@ def dim_chain(d, axis, pos, vals, ext=None, label_min=0.40, toff=None, size=0.17
             d.line([P(v, ext + sgn * 0.06), P(v, pos + sgn * 0.08)], "dimext", layer=4)
     for i in range(len(vals) - 1):
         L = vals[i + 1] - vals[i]
-        if L < label_min:
-            continue
         lab = labels[i] if labels else fmt(L)
+        if L < label_min or lab is None:
+            continue
         d.text(P((vals[i] + vals[i + 1]) / 2, pos + toff), lab, size=size, cls="dimtext", rot=rot, layer=4)
 
 
-# --------------------------------------------------------------------------
-# Mobiliário (só referência de escala)
-# --------------------------------------------------------------------------
-def bed_head_x1(d, x0, y0, x1, y1):
-    d.rect(x0, y0, x1, y1)
-    w = y1 - y0
-    d.rect(x1 - 0.48, y0 + 0.10, x1 - 0.12, y0 + w / 2 - 0.05)
-    d.rect(x1 - 0.48, y0 + w / 2 + 0.05, x1 - 0.12, y1 - 0.10)
-    d.line([(x1 - 0.62, y0), (x1 - 0.62, y1)], "furn", layer=1)
-    d.line([(x1 - 0.62, y1), (x1 - 0.95, y1 - 0.33)], "furn", layer=1)
-    d.line([(x1 - 0.95, y1 - 0.33), (x1 - 0.62, y1 - 0.33)], "furn", layer=1)
-
-
-def wardrobe(d, x0, y0, x1, y1):
-    d.rect(x0, y0, x1, y1)
-    xm = (x0 + x1) / 2
-    d.line([(xm, y0), (xm, y1)], "furn", layer=1)
-    n = int((y1 - y0) / 0.30)
-    for i in range(1, n):
-        y = y0 + i * (y1 - y0) / n
-        d.line([(xm - 0.12, y - 0.06), (xm + 0.12, y + 0.06)], "furnlight", layer=1)
-
-
-def toilet(d, xw, yc, s=1):
-    d.rect(xw, yc - 0.20, xw + s * 0.18, yc + 0.20)
-    d.poly(ellipse_pts(xw + s * 0.42, yc, 0.24, 0.18))
-
-
-def basin(d, x0, y0, x1, y1, rx=0.20, ry=0.15):
-    d.rect(x0, y0, x1, y1)
-    d.poly(ellipse_pts((x0 + x1) / 2, (y0 + y1) / 2, rx, ry))
-
-
-def shower(d, x0, y0, x1, y1, glass_at):
-    d.rect(x0, y0, x1, y1, "wet", layer=0)
-    d.circle(((x0 + x1) / 2, (y0 + y1) / 2), 0.05)
-    if glass_at == "y0":
-        d.line([(x0, y0), (x1, y0)], "glassline", layer=3)
-    else:
-        d.line([(x0, y1), (x1, y1)], "glassline", layer=3)
-
-
-def stair(d, superior=False):
-    """Escada reta: 16 espelhos de 18 cm, 15 pisos de 28 cm, largura 0,90 m."""
-    ys = [round(ESC_Y0 + i * PISO_DEG, 3) for i in range(N_ESPELHOS)]
-    corte_i = 7  # linha de corte da planta (~1,20 m)
-    if not superior:
-        for i, y in enumerate(ys):
-            cls = "thin" if i <= corte_i else "hidden"
-            d.line([(ESC_X0, y), (ESC_X1, y)], cls)
-        yb = ys[corte_i] + 0.14
-        d.line([(ESC_X0, yb - 0.10), (ESC_X1, yb + 0.10)], "thin")
-        xm = (ESC_X0 + ESC_X1) / 2
-        d.circle((xm, ESC_Y0 + 0.14), 0.04, "thin", layer=3)
-        d.line([(xm, ESC_Y0 + 0.14), (xm, yb)], "thin")
-        d.poly([(xm - 0.07, yb - 0.16), (xm + 0.07, yb - 0.16), (xm, yb - 0.02)], "arrow", layer=3)
-        d.text((xm + 0.24, ESC_Y0 + 0.62), "SOBE", size=0.14, cls="small")
-    else:
-        for y in ys:
-            if y >= VAZIO_Y0:
-                d.line([(ESC_X0, y), (ESC_X1, y)], "thin")
-        xm = (ESC_X0 + ESC_X1) / 2
-        d.line([(xm, ESC_Y1 - 0.14), (xm, VAZIO_Y0 + 0.25)], "thin")
-        d.poly([(xm - 0.07, VAZIO_Y0 + 0.39), (xm + 0.07, VAZIO_Y0 + 0.39), (xm, VAZIO_Y0 + 0.23)], "arrow", layer=3)
-        d.text((xm + 0.24, ESC_Y1 - 0.62), "DESCE", size=0.14, cls="small")
-
-
-def scale_bar(d, p, comp=2.0):
-    """Escala gráfica de 0 a `comp` metros a partir de p, na horizontal da tela."""
+def scale_bar(d, p, comp=2):
+    """Escala gráfica de 0 a `comp` metros, na horizontal da tela."""
     if d.plano:
         def P(t, o=0.0):
             return (p[0] + o, p[1] + t)
@@ -314,17 +236,16 @@ def scale_bar(d, p, comp=2.0):
         def P(t, o=0.0):
             return (p[0] + t, p[1] + o)
         up = 1
-    h = 0.07
-    for i in range(int(comp)):
+    for i in range(comp):
         cls = "barfill" if i % 2 == 0 else "barempty"
-        d.poly([P(i, 0), P(i + 1, 0), P(i + 1, up * h), P(i, up * h)], cls, layer=4)
-    for i in range(int(comp) + 1):
+        d.poly([P(i, 0), P(i + 1, 0), P(i + 1, up * 0.07), P(i, up * 0.07)], cls, layer=4)
+    for i in range(comp + 1):
         d.text(P(i, up * 0.22), str(i), size=0.13, cls="dimtext", layer=5)
     d.text(P(comp + 0.25, up * 0.04), "m", size=0.13, cls="dimtext", layer=5)
 
 
-def section_marks(d, ys=(-2.15, 21.70)):
-    """Indicação do corte AA na planta (seta aponta no sentido da vista: +x)."""
+def section_marks(d, ys):
+    """Indicação do corte AA na planta (a seta aponta no sentido da vista: +x)."""
     for y in ys:
         d.line([(CORTE_X, y - 0.35), (CORTE_X, y + 0.35)], "secline", layer=4)
         d.poly([(CORTE_X, y - 0.10), (CORTE_X, y + 0.10), (CORTE_X + 0.30, y)], "secarrow", layer=4)
@@ -333,383 +254,407 @@ def section_marks(d, ys=(-2.15, 21.70)):
 
 
 # --------------------------------------------------------------------------
-# PLANTA DO TÉRREO
+# Mobiliário (referência de escala)
 # --------------------------------------------------------------------------
-def planta_terreo():
-    d = Drawing("terreo")
-
-    # pisos (tons de fundo)
-    d.area(box(0.15, 0.0, 3.85, GARAGEM_L), "floor-garage")
-    d.area(box(0.15, FIM_CASA, 3.85, MURO_FUNDO), "garden")
-    d.area(box(0.15, 12.00, 1.85, 14.55), "floor-wet")
-    # calçada (antes do alinhamento)
-    d.area(box(-0.6, -1.50, 4.6, 0.0), "sidewalk")
-    d.line([(-0.6, -1.50), (4.6, -1.50)], "elevlight", layer=3)
-
-    # paredes de divisa (até o fundo da casa) e muros do quintal
-    d.wall(0.00, 0.00, 0.15, FIM_CASA)
-    d.wall(3.85, 0.00, 4.00, FIM_CASA)
-    d.muro(0.00, FIM_CASA, 0.15, LOTE_L)
-    d.muro(3.85, FIM_CASA, 4.00, LOTE_L)
-    d.muro(0.15, MURO_FUNDO, 3.85, LOTE_L)
-    # pilar entre portões
-    d.wall(2.85, 0.00, 2.95, 0.15)
-    # fachada da casa (fundo da garagem)
-    d.wall(0.15, 5.50, 3.85, 5.65)
-    # fundos
-    d.wall(0.15, 14.55, 3.85, 14.70)
-    # lavabo + lavanderia
-    d.wall(0.15, 11.90, 1.95, 12.00)
-    d.wall(1.85, 12.00, 1.95, 14.55)
-
-    # esquadrias
-    window_h(d, 1.30, 2.50, 5.50, 5.65)                 # J1 sala -> garagem
-    door_h(d, 2.80, 3.70, 5.50, 5.65, "x1", +1)         # P1 entrada
-    door_v(d, 12.90, 13.60, 1.85, 1.95, "y1", -1)       # P3 lavabo/lavanderia
-    window_h(d, 0.40, 1.60, 14.55, 14.70)               # J2 lavanderia
-    sliding_h(d, 2.10, 3.70, 14.55, 14.70)              # P2 porta de correr p/ quintal
-
-    # portões no alinhamento
-    d.rect(0.15, 0.00, 2.85, 0.05, "leaf", layer=3)     # portão basculante 2,70
-    d.rect(0.15, 0.05, 2.85, 1.25, "hiddenrect", layer=3)
-    door(d, (3.85, 0.05), (2.95, 0.05), (3.85, 0.95))   # portão social 0,90
-    d.line([(2.95, 0.05), (3.85, 0.05)], "hidden")
-
-    # escada + guarda-corpo do lado aberto
-    stair(d)
-    d.line([(ESC_X1, ESC_Y0), (ESC_X1, ESC_Y1)], "rail", layer=3)
-    d.rect(ESC_X0 + 0.02, 8.45, ESC_X1 - 0.02, ESC_Y1 - 0.02, "hiddenrect", layer=1)
-    d.text((0.60, 9.15), "armário", size=0.11, cls="tiny")
-
-    # mobiliário ----------------------------------------------------------
-    # carro (1,80 x 4,50)
-    d.poly(rounded_rect(0.42, 0.40, 2.22, 4.90, 0.30), "car")
-    d.poly([(0.55, 3.55), (2.09, 3.55), (1.98, 3.05), (0.66, 3.05)], "car")
-    d.poly([(0.62, 1.05), (2.02, 1.05), (1.95, 1.40), (0.69, 1.40)], "car")
-    # estar
-    sofa_x0, sofa_y0, sofa_x1, sofa_y1 = 1.13, 6.30, 2.03, 8.30
-    d.rect(sofa_x0, sofa_y0, sofa_x1, sofa_y1)
-    d.rect(sofa_x0, sofa_y0, sofa_x0 + 0.22, sofa_y1)
-    d.rect(sofa_x0 + 0.22, sofa_y0, sofa_x1, sofa_y0 + 0.20)
-    d.rect(sofa_x0 + 0.22, sofa_y1 - 0.20, sofa_x1, sofa_y1)
-    d.line([(sofa_x0 + 0.22, 7.30), (sofa_x1, 7.30)], "furn", layer=1)
-    d.rect(3.45, 6.70, 3.85, 7.90)                       # rack
-    d.rect(3.70, 6.80, 3.76, 7.80, "furn", layer=1)      # TV
-    d.poly(rounded_rect(2.18, 6.55, 3.18, 8.05, 0.05), "rug")
-    # cozinha: geladeira + bancada (cooktop e cuba)
-    d.rect(3.15, 8.95, 3.85, 9.70)
-    d.line([(3.15, 8.95), (3.85, 9.70)], "furnlight", layer=1)
-    d.rect(3.25, 9.70, 3.85, 13.15)
-    d.rect(3.32, 10.30, 3.80, 10.90)
-    for cx, cy in ((3.44, 10.44), (3.68, 10.44), (3.44, 10.76), (3.68, 10.76)):
-        d.circle((cx, cy), 0.08)
-    d.poly(rounded_rect(3.33, 12.05, 3.78, 12.75, 0.06))
-    d.circle((3.70, 12.40), 0.03)
-    # jantar (mesa 0,80 x 1,20 + 4 cadeiras)
-    d.rect(0.75, 10.25, 1.55, 11.45)
-    for yc in (10.55, 11.15):
-        d.rect(0.30, yc - 0.21, 0.70, yc + 0.21)
-        d.rect(1.60, yc - 0.21, 2.00, yc + 0.21)
-    # lavabo + lavanderia
-    toilet(d, 0.15, 12.40)
-    basin(d, 0.15, 12.85, 0.52, 13.30, rx=0.12, ry=0.17)
-    d.rect(0.25, 13.90, 0.85, 14.50)
-    d.circle((0.55, 14.20), 0.22)
-    d.rect(1.12, 13.97, 1.72, 14.55)
-    d.rect(1.20, 14.05, 1.64, 14.38)
-    # quintal: jardim, árvore, varal
-    for c, r in (((3.05, 18.70), 0.75), ((0.75, 19.20), 0.40), ((3.45, 15.40), 0.30)):
-        d.circle(c, r, "plant", layer=1)
-    d.line([(0.55, 16.20), (0.55, 18.00)], "furnlight", layer=1)
-    d.line([(0.95, 16.20), (0.95, 18.00)], "furnlight", layer=1)
-    d.line([(0.40, 16.20), (1.10, 16.20)], "furn", layer=1)
-    d.line([(0.40, 18.00), (1.10, 18.00)], "furn", layer=1)
-    d.text((0.75, 17.10), "varal", size=0.12, cls="tiny", rot=-90)
-    for y in (15.25, 15.75, 16.25):
-        d.rect(2.10, y, 2.70, y + 0.35, "paver", layer=1)
-
-    # rótulos
-    areas = areas_terreo()
-    d.label((3.05, 2.70), "GARAGEM", f"{fmt(areas['GARAGEM'])} m²", "4,00 × 5,50", size=0.24, sub=0.17)
-    d.label((2.70, 9.05), "SALA + COZINHA", f"{fmt(areas['SALA + COZINHA'])} m²", "integradas")
-    d.text((2.68, 7.30), "estar", size=0.15, cls="tiny2")
-    d.text((1.15, 9.98), "jantar", size=0.15, cls="tiny2")
-    d.text((2.62, 11.60), "cozinha", size=0.15, cls="tiny2")
-    d.text((0.72, 13.25), "LAVABO +", size=0.15, cls="label")
-    d.text((0.93, 13.25), "LAVANDERIA", size=0.15, cls="label")
-    d.text((1.13, 13.25), f"{fmt(areas['LAVABO + LAVANDERIA'])} m²", size=0.13, cls="sublabel")
-    d.label((2.05, 17.30), "QUINTAL", f"{fmt(areas['QUINTAL'])} m²", "área permeável")
-    d.text((2.0, -1.05), "CALÇADA", size=0.15, cls="tiny2", rot=-90)
-    d.text((2.4, -2.05), "RUA", size=0.20, cls="sublabel", rot=-90)
-
-    # códigos das esquadrias
-    for p, s in (((5.82, 1.90), "J1"), ((5.82, 3.25), "P1"), ((13.25, 2.18), "P3"),
-                 ((14.92, 1.00), "J2"), ((14.92, 2.90), "P2")):
-        d.text((p[1], p[0]), s, size=0.12, cls="code")
-    d.text((1.50, -0.32), "portão basculante 2,70", size=0.12, cls="tiny", rot=-90)
-    d.text((3.40, -0.32), "social 0,90", size=0.12, cls="tiny", rot=-90)
-
-    # cotas
-    dim_chain(d, 1, 4.45, [0, GARAGEM_L, FIM_CASA, LOTE_L], ext=4.0,
-              labels=["5,50 garagem", "9,20 casa", "5,30 quintal"])
-    dim_chain(d, 1, 4.95, [0, LOTE_L], ext=4.0, labels=["20,00 (profundidade do lote)"])
-    dim_chain(d, 1, -0.40, [5.50, 5.65, ESC_Y1, 12.00, 14.55, 14.70, MURO_FUNDO], ext=0.0)
-    dim_chain(d, 0, 20.45, [0, 0.15, 3.85, 4.0], ext=20.0)
-    dim_chain(d, 0, 20.95, [0, 4.0], ext=20.0)
-    section_marks(d)
-    scale_bar(d, (4.85, -2.45))
-
-    d.finalize()
-    return d
+def bed_head_x1(d, x0, y0, x1, y1):
+    d.rect(x0, y0, x1, y1)
+    w = y1 - y0
+    d.rect(x1 - 0.46, y0 + 0.08, x1 - 0.12, y0 + w / 2 - 0.04)
+    d.rect(x1 - 0.46, y0 + w / 2 + 0.04, x1 - 0.12, y1 - 0.08)
+    d.line([(x1 - 0.60, y0), (x1 - 0.60, y1)], "furn", layer=1)
+    d.line([(x1 - 0.60, y1), (x1 - 0.92, y1 - 0.32)], "furn", layer=1)
+    d.line([(x1 - 0.92, y1 - 0.32), (x1 - 0.60, y1 - 0.32)], "furn", layer=1)
 
 
-def areas_terreo():
-    salacoz = box(0.15, 5.65, 3.85, 14.55).difference(box(0.15, 11.90, 1.95, 14.55))
+def wardrobe_v(d, x0, y0, x1, y1):
+    """Armário encostado em parede paralela ao eixo y."""
+    d.rect(x0, y0, x1, y1)
+    xm = (x0 + x1) / 2
+    d.line([(xm, y0), (xm, y1)], "furn", layer=1)
+    n = max(2, int((y1 - y0) / 0.30))
+    for i in range(1, n):
+        y = y0 + i * (y1 - y0) / n
+        d.line([(xm - 0.12, y - 0.06), (xm + 0.12, y + 0.06)], "furnlight", layer=1)
+
+
+def wardrobe_h(d, x0, y0, x1, y1):
+    """Armário encostado em parede paralela ao eixo x."""
+    d.rect(x0, y0, x1, y1)
+    ym = (y0 + y1) / 2
+    d.line([(x0, ym), (x1, ym)], "furn", layer=1)
+    n = max(2, int((x1 - x0) / 0.30))
+    for i in range(1, n):
+        x = x0 + i * (x1 - x0) / n
+        d.line([(x - 0.06, ym - 0.12), (x + 0.06, ym + 0.12)], "furnlight", layer=1)
+
+
+def toilet(d, xw, yc, s=1):
+    """Vaso sanitário com a caixa encostada na parede x = xw, voltado para +x (s=1) ou -x (s=-1)."""
+    d.rect(xw, yc - 0.20, xw + s * 0.18, yc + 0.20)
+    d.poly(ellipse_pts(xw + s * 0.42, yc, 0.24, 0.18))
+
+
+def basin(d, x0, y0, x1, y1, rx=0.15, ry=0.12):
+    d.rect(x0, y0, x1, y1)
+    d.poly(ellipse_pts((x0 + x1) / 2, (y0 + y1) / 2, rx, ry))
+
+
+def shower(d, x0, y0, x1, y1, glass_at):
+    d.rect(x0, y0, x1, y1, "wet", layer=0)
+    d.circle(((x0 + x1) / 2, (y0 + y1) / 2), 0.05)
+    y = y0 if glass_at == "y0" else y1
+    d.line([(x0, y), (x1, y)], "glassline", layer=3)
+
+
+# --------------------------------------------------------------------------
+# Áreas
+# --------------------------------------------------------------------------
+def areas():
     return {
         "GARAGEM": box(0.15, 0.0, 3.85, GARAGEM_L).area,
-        "SALA + COZINHA": salacoz.area,
-        "LAVABO + LAVANDERIA": box(0.15, 12.00, 1.85, 14.55).area,
-        "QUINTAL": box(0.15, FIM_CASA, 3.85, MURO_FUNDO).area,
+        "SALA + COZINHA": box(0.15, Y_SALA[0], 3.85, Y_SALA[1]).area,
+        "LAVABO + LAVANDERIA": box(XB0, Y_LAV[0], XB1, Y_LAV[1]).area,
+        "CIRCULAÇÃO": box(XA0, Y_SALA[1], XA1, Y_BAN[1]).area,
+        "SUÍTE 1": box(XB0, Y_Q1[0], XB1, Y_Q1[1]).area,
+        "BANHO 1": box(XB0, Y_BAN[0], XBAN[0], Y_BAN[1]).area,
+        "BANHO 2": box(XBAN[1], Y_BAN[0], XB1, Y_BAN[1]).area,
+        "SUÍTE 2": box(0.15, Y_Q2[0], 3.85, Y_Q2[1]).area,
     }
 
 
 # --------------------------------------------------------------------------
-# PLANTA DO PAVIMENTO SUPERIOR
+# PLANTA BAIXA
 # --------------------------------------------------------------------------
-def areas_superior():
-    circ = unary_union([box(1.05, 5.15, 1.95, ESC_Y1), box(0.15, 5.15, 1.05, VAZIO_Y0),
-                        box(0.15, ESC_Y1, 1.95, 10.75)])
-    return {
-        "VARANDA": box(0.15, 0.0, 3.85, 1.20).area,
-        "SUÍTE 1": box(0.15, 1.35, 3.85, 5.05).area,
-        "BANHO 1": box(2.05, 5.15, 3.85, 7.90).area,
-        "CIRCULAÇÃO": circ.area,
-        "BANHO 2": box(2.05, 8.00, 3.85, 10.75).area,
-        "SUÍTE 2": box(0.15, 10.85, 3.85, 14.55).area,
-        "VAZIO DA ESCADA": box(ESC_X0, VAZIO_Y0, ESC_X1, ESC_Y1).area,
-    }
+def planta_baixa():
+    d = Drawing("planta")
+    a = areas()
 
+    # pisos
+    d.area(box(-0.6, -1.50, 4.6, 0.0), "sidewalk")
+    d.line([(-0.6, -1.50), (4.6, -1.50)], "elevlight", layer=3)
+    d.area(box(0.15, 0.0, 3.85, GARAGEM_L), "grasspave")
+    d.area(box(XB0, Y_LAV[0], XB1, Y_LAV[1]), "floor-wet")
+    d.area(box(XB0, Y_BAN[0], XB1, Y_BAN[1]), "floor-wet")
 
-def planta_superior():
-    d = Drawing("superior")
-    d.area(box(ESC_X0, VAZIO_Y0, ESC_X1, ESC_Y1), "void")
-    d.area(box(2.05, 5.15, 3.85, 7.90), "floor-wet")
-    d.area(box(2.05, 8.00, 3.85, 10.75), "floor-wet")
-    d.area(box(0.15, 0.0, 3.85, 1.20), "floor-garage")
-    # projeção da garagem/lote (para referência)
-    d.rect(0.0, FIM_CASA, 4.0, LOTE_L, "ghost", layer=0)
-    d.text((2.0, 17.35), "projeção do quintal (térreo)", size=0.15, cls="tiny2")
+    # muros da garagem (aberta, com pergolado) e paredes da casa
+    d.muro(0.00, 0.00, 0.15, GARAGEM_L)
+    d.muro(3.85, 0.00, 4.00, GARAGEM_L)
+    d.wall(1.05, 0.00, 1.15, 0.15)                        # pilar entre portões
+    d.wall(0.00, GARAGEM_L, 0.15, LOTE_L)                 # divisa esquerda
+    d.wall(3.85, GARAGEM_L, 4.00, LOTE_L)                 # divisa direita
+    d.wall(0.15, *Y_FRENTE[:1], 3.85, Y_FRENTE[1])        # fachada
+    d.wall(XB0, Y_SALA[1], XB1, Y_LAV[0])                 # sala | lavabo
+    d.wall(XA1, Y_SALA[1], XB0, Y_BAN[1] + 0.10)          # corredor | cômodos
+    d.wall(XB0, Y_LAV[1], XB1, Y_Q1[0])                   # lavabo | suíte 1
+    d.wall(XB0, Y_Q1[1], XB1, Y_BAN[0])                   # suíte 1 | banhos
+    d.wall(XBAN[0], Y_BAN[0], XBAN[1], Y_BAN[1])          # banho 1 | banho 2
+    d.wall(0.15, Y_BAN[1], 3.85, Y_Q2[0])                 # banhos/corredor | suíte 2
+    d.wall(0.15, Y_FUNDO[0], 3.85, Y_FUNDO[1])            # fundo (na divisa)
 
-    d.wall(0.00, 0.00, 0.15, FIM_CASA)
-    d.wall(3.85, 0.00, 4.00, FIM_CASA)
-    d.wall(0.15, 1.20, 3.85, 1.35)     # frente suíte 1
-    d.wall(0.15, 5.05, 3.85, 5.15)     # fundo suíte 1
-    d.wall(1.95, 5.15, 2.05, 10.75)    # circulação | banhos
-    d.wall(2.05, 7.90, 3.85, 8.00)     # banho 1 | banho 2
-    d.wall(0.15, 10.75, 3.85, 10.85)   # frente suíte 2
-    d.wall(0.15, 14.55, 3.85, 14.70)   # fundos
+    # esquadrias
+    door_h(d, 0.20, 1.10, *Y_FRENTE, "x0", +1)            # P1 entrada
+    window_h(d, 1.60, 3.10, *Y_FRENTE)                    # J1 sala -> garagem
+    door_v(d, 10.55, 11.25, XA1, XB0, "y0", +1)           # P2 lavabo + lavanderia
+    door_v(d, 12.05, 12.85, XA1, XB0, "y0", +1)           # P3 suíte 1
+    door_h(d, 1.20, 1.80, Y_Q1[1], Y_BAN[0], "x0", +1)    # P4 banho 1
+    door_h(d, 0.17, 0.97, Y_BAN[1], Y_Q2[0], "x0", +1)    # P3 suíte 2
+    door_h(d, 2.60, 3.20, Y_BAN[1], Y_Q2[0], "x0", -1)    # P4 banho 2
 
-    sliding_h(d, 0.40, 2.40, 1.20, 1.35)               # P4 varanda
-    door_h(d, 1.10, 1.90, 5.05, 5.15, "x0", -1)        # P5 suíte 1
-    door_h(d, 2.15, 2.85, 5.05, 5.15, "x0", +1)        # P6 banho 1
-    door_h(d, 0.30, 1.10, 10.75, 10.85, "x0", +1)      # P5 suíte 2
-    door_h(d, 2.15, 2.85, 10.75, 10.85, "x0", -1)      # P6 banho 2
-    window_h(d, 0.40, 2.40, 14.55, 14.70)              # J3 suíte 2
+    # portões no alinhamento
+    door(d, (0.15, 0.05), (1.05, 0.05), (0.15, 0.95))     # portão social 0,90
+    d.line([(0.15, 0.05), (1.05, 0.05)], "hidden")
+    d.rect(1.15, 0.00, 3.85, 0.05, "leaf", layer=3)       # portão basculante 2,70
+    d.rect(1.15, 0.05, 3.85, 1.15, "hiddenrect", layer=3)
 
-    # guarda-corpos (varanda e vazio)
-    d.rect(0.15, 0.0, 3.85, 0.05, "rail2", layer=3)
-    d.rect(ESC_X1 - 0.02, VAZIO_Y0, ESC_X1 + 0.02, ESC_Y1, "rail2", layer=3)
-    d.rect(ESC_X0, VAZIO_Y0 - 0.02, ESC_X1 + 0.02, VAZIO_Y0 + 0.02, "rail2", layer=3)
-    stair(d, superior=True)
+    # pergolado (projeção)
+    for i in range(11):
+        y = 0.40 + i * 0.50
+        d.line([(0.15, y), (3.85, y)], "pergola", layer=1)
 
-    # claraboia (projeção) e exaustão dos banhos
-    d.rect(0.25, VAZIO_Y0 + 0.10, 1.85, ESC_Y1 - 0.10, "skylight", layer=3)
-    d.text((1.50, 6.95), "claraboia", size=0.12, cls="accenttext")
-    d.text((1.66, 6.95), "(acima)", size=0.11, cls="accenttext")
-    for yc in (7.35, 8.55):
-        d.rect(2.95 - 0.15, yc - 0.15, 2.95 + 0.15, yc + 0.15, "hiddenrect", layer=3)
-        d.line([(2.80, yc - 0.15), (3.10, yc + 0.15)], "hidden")
-        d.line([(2.80, yc + 0.15), (3.10, yc - 0.15)], "hidden")
+    # projeções da cobertura: janelas dos sheds e domus
+    for nome, yv, ye, x0, x1 in SHEDS:
+        d.line([(x0, yv), (x1, yv)], "skylight", layer=3)
+    for cx, cy, s in DOMUS:
+        h = s / 2
+        d.rect(cx - h, cy - h, cx + h, cy + h, "skylightbox", layer=3)
+        d.line([(cx - h, cy - h), (cx + h, cy + h)], "skylightbox", layer=3)
+        d.line([(cx - h, cy + h), (cx + h, cy - h)], "skylightbox", layer=3)
 
-    # mobiliário
-    d.rect(0.20, 0.07, 1.80, 0.30, "plant", layer=1)          # jardineira
-    d.circle((3.12, 0.62), 0.22)
-    d.circle((2.62, 0.62), 0.19)
-    d.circle((3.60, 0.62), 0.19)
-    bed_head_x1(d, 1.87, 2.41, 3.85, 3.99)
-    d.rect(3.40, 1.90, 3.85, 2.36)
-    d.rect(3.40, 4.04, 3.85, 4.50)
-    wardrobe(d, 0.15, 1.85, 0.75, 4.15)
+    # mobiliário ----------------------------------------------------------
+    # carro 1,80 x 4,50 (à direita) e passagem à esquerda
+    d.poly(rounded_rect(1.80, 0.45, 3.60, 4.95, 0.30), "car")
+    d.poly([(1.93, 3.60), (3.47, 3.60), (3.36, 3.10), (2.04, 3.10)], "car")
+    d.poly([(2.00, 1.10), (3.40, 1.10), (3.33, 1.45), (2.07, 1.45)], "car")
+    # estar
+    sx0, sy0, sx1, sy1 = 2.95, 5.80, 3.85, 7.25
+    d.rect(sx0, sy0, sx1, sy1)
+    d.rect(sx1 - 0.22, sy0, sx1, sy1)
+    d.rect(sx0, sy0, sx1 - 0.22, sy0 + 0.20)
+    d.rect(sx0, sy1 - 0.20, sx1 - 0.22, sy1)
+    d.line([(sx0, (sy0 + sy1) / 2), (sx1 - 0.22, (sy0 + sy1) / 2)], "furn", layer=1)
+    d.rect(0.15, 6.65, 0.50, 7.65)                         # rack
+    d.rect(0.20, 6.75, 0.26, 7.55)                         # TV
+    # jantar (mesa 1,20 x 0,80 + 4 cadeiras)
+    d.rect(1.50, 7.80, 2.70, 8.60)
+    for xc in (1.85, 2.35):
+        d.rect(xc - 0.20, 7.35, xc + 0.20, 7.75)
+        d.rect(xc - 0.20, 8.65, xc + 0.20, 9.05)
+    # cozinha linear na parede do fundo da sala
+    d.rect(XB0, 9.75, XB1, Y_SALA[1])
+    d.rect(1.13, 9.68, 1.83, Y_SALA[1])                   # geladeira
+    d.line([(1.13, 9.68), (1.83, Y_SALA[1])], "furnlight", layer=1)
+    d.poly(rounded_rect(2.15, 9.82, 2.85, 10.28, 0.06))   # cuba
+    d.circle((2.50, 10.22), 0.03)
+    d.rect(3.10, 9.80, 3.70, 10.30)                        # cooktop
+    for cx, cy in ((3.24, 9.93), (3.56, 9.93), (3.24, 10.17), (3.56, 10.17)):
+        d.circle((cx, cy), 0.08)
+    # lavabo + lavanderia
+    d.rect(1.95, 11.25, 2.55, Y_LAV[1])                   # máquina
+    d.circle((2.25, 11.55), 0.22)
+    d.rect(2.60, 11.33, 3.10, Y_LAV[1])                   # tanque
+    d.rect(2.67, 11.40, 3.03, 11.75)
+    toilet(d, 3.85, 11.05, s=-1)
+    basin(d, 3.35, Y_LAV[0], 3.80, 10.78)
+    # suíte 1 (cama de casal 1,38 x 1,88)
+    wardrobe_h(d, 1.95, Y_Q1[0], 3.85, 12.50)
+    bed_head_x1(d, 1.97, 12.95, 3.85, 14.33)
+    d.rect(3.42, 14.36, 3.85, 14.78)
     # banho 1
-    shower(d, 2.05, 7.00, 3.85, 7.90, "y0")
-    toilet(d, 2.05, 6.50)
-    basin(d, 3.35, 5.35, 3.85, 6.35, rx=0.17, ry=0.25)
+    basin(d, 2.05, 15.00, XBAN[0], 15.45, rx=0.12, ry=0.17)
+    toilet(d, XBAN[0], 15.85, s=-1)
+    shower(d, XB0, 16.25, XBAN[0], Y_BAN[1], "y0")
     # banho 2
-    shower(d, 2.05, 8.00, 3.85, 8.90, "y1")
-    toilet(d, 2.05, 9.40)
-    basin(d, 3.35, 9.55, 3.85, 10.55, rx=0.17, ry=0.25)
+    shower(d, XBAN[1], Y_BAN[0], XB1, 15.75, "y1")
+    toilet(d, XB1, 16.05, s=-1)
+    basin(d, 3.50, 16.55, XB1, 17.00, rx=0.12, ry=0.17)
     # suíte 2
-    bed_head_x1(d, 1.87, 12.01, 3.85, 13.59)
-    d.rect(3.40, 11.50, 3.85, 11.96)
-    d.rect(3.40, 13.64, 3.85, 14.10)
-    wardrobe(d, 0.15, 11.75, 0.75, 14.05)
+    wardrobe_v(d, 0.15, 18.05, 0.70, Y_Q2[1])
+    bed_head_x1(d, 1.97, 18.05, 3.85, 19.43)
+    d.rect(3.42, 19.45, 3.85, Y_Q2[1])
 
-    a = areas_superior()
-    d.label((0.95, 0.76), "VARANDA", f"{fmt(a['VARANDA'])} m²", size=0.16, sub=0.13)
-    d.label((1.31, 3.20), "SUÍTE 1", f"{fmt(a['SUÍTE 1'])} m²", "3,70 × 3,70")
-    d.label((3.03, 6.40), "BANHO 1", f"{fmt(a['BANHO 1'])} m²", size=0.19, sub=0.15)
-    d.label((1.50, 8.55), "CIRCULAÇÃO", size=0.16, sub=0.13)
-    d.label((3.03, 9.70), "BANHO 2", f"{fmt(a['BANHO 2'])} m²", size=0.19, sub=0.15)
-    d.label((1.31, 12.80), "SUÍTE 2", f"{fmt(a['SUÍTE 2'])} m²", "3,70 × 3,70")
-    d.text((3.40, 7.42), "box", size=0.12, cls="tiny")
-    d.text((3.40, 8.47), "box", size=0.12, cls="tiny")
+    # rótulos
+    d.label((0.92, 2.70), "GARAGEM", f"{fmt(a['GARAGEM'])} m²", "4,00 × 5,50", size=0.22, sub=0.16)
+    d.text((0.92, 4.30), "pergolado + piso drenante", size=0.12, cls="tiny2")
+    d.label((2.05, 6.52), "SALA + COZINHA", f"{fmt(a['SALA + COZINHA'])} m²", "integradas", size=0.17, sub=0.14)
+    d.text((2.40, 9.40), "cozinha", size=0.14, cls="tiny2")
+    d.text((2.45, 10.93), "LAVABO +", size=0.12, cls="label")
+    d.text((2.62, 10.93), "LAVANDERIA", size=0.12, cls="label")
+    d.text((2.79, 10.93), f"{fmt(a['LAVABO + LAVANDERIA'])} m²", size=0.11, cls="sublabel")
+    d.label((1.53, 13.60), "SUÍTE 1", f"{fmt(a['SUÍTE 1'])} m²", "2,75 × 2,85", size=0.20, sub=0.14)
+    d.label((1.42, 15.88), "BANHO 1", f"{fmt(a['BANHO 1'])} m²", size=0.13, sub=0.11)
+    d.label((2.85, 16.12), "BANHO 2", f"{fmt(a['BANHO 2'])} m²", size=0.13, sub=0.11)
+    d.label((1.35, 18.95), "SUÍTE 2", f"{fmt(a['SUÍTE 2'])} m²", "3,70 × 2,65", size=0.22, sub=0.16)
+    d.label((0.575, 13.85), "CIRCULAÇÃO", f"{fmt(a['CIRCULAÇÃO'])} m²", size=0.14, sub=0.12)
+    d.text((2.0, -1.05), "CALÇADA", size=0.15, cls="tiny2", rot=-90)
+    d.text((2.4, -2.05), "RUA", size=0.20, cls="sublabel", rot=-90)
+    d.text((0.60, -0.32), "social 0,90", size=0.12, cls="tiny", rot=-90)
+    d.text((2.50, -0.32), "portão basculante 2,70", size=0.12, cls="tiny", rot=-90)
 
-    for p, s in (((1.48, 1.55), "P4"), ((4.90, 1.70), "P5"), ((4.90, 2.70), "P6"),
-                 ((11.00, 0.95), "P5"), ((11.00, 2.70), "P6"), ((14.38, 1.30), "J3")):
-        d.text((p[1], p[0]), s, size=0.12, cls="code")
+    # códigos das esquadrias  (x, y)
+    for p, s in (((0.65, 5.30), "P1"), ((2.35, 5.30), "J1"), ((1.20, 10.30), "P2"), ((1.20, 12.00), "P3"),
+                 ((1.50, 14.62), "P4"), ((0.57, 17.40), "P3"), ((2.90, 17.40), "P4")):
+        d.text(p, s, size=0.11, cls="code")
 
-    dim_chain(d, 1, -0.40, [0, 1.20, 1.35, 5.05, 5.15, 7.90, 8.00, 10.75, 10.85, 14.55, 14.70], ext=0.0)
-    dim_chain(d, 1, 4.45, [0, FIM_CASA], ext=4.0, labels=["14,70"])
-    dim_chain(d, 0, 15.25, [0, 0.15, ESC_X1, 1.95, 2.05, 3.85, 4.0], ext=14.70)
-    section_marks(d, ys=(-0.95, 15.95))
-    scale_bar(d, (4.55, -2.45))
+    # cotas
+    dim_chain(d, 1, 4.45, [0, GARAGEM_L, LOTE_L], ext=4.0, labels=["5,50 garagem", "14,50 casa"])
+    dim_chain(d, 1, 4.95, [0, LOTE_L], ext=4.0, labels=["20,00 (profundidade do lote)"])
+    dim_chain(d, 1, -0.40, [5.50, 5.65, 10.35, 10.45, 11.85, 11.95, 14.80, 14.90, 17.10, 17.20, 19.85, 20.0], ext=0.0)
+    dim_chain(d, 0, 20.45, [0, 0.15, XA1, XB0, XBAN[0], XBAN[1], 3.85, 4.0], ext=20.0, label_min=0.5)
+    dim_chain(d, 0, 20.95, [0, 4.0], ext=20.0)
+    section_marks(d, ys=(-2.15, 21.70))
+    scale_bar(d, (4.85, -2.45))
     d.finalize()
     return d
 
 
 # --------------------------------------------------------------------------
-# CORTE AA (x = 0,60, vista para a direita)
+# PLANTA DE COBERTURA
+# --------------------------------------------------------------------------
+def slope_arrow(d, x, y0, y1, txt):
+    d.line([(x, y0), (x, y1)], "slope", layer=4)
+    s = 1 if y1 > y0 else -1
+    d.poly([(x - 0.06, y1 - s * 0.16), (x + 0.06, y1 - s * 0.16), (x, y1)], "slopehead", layer=4)
+    d.text((x - 0.14, (y0 + y1) / 2), txt, size=0.12, cls="tiny2", layer=5)
+
+
+def planta_cobertura():
+    d = Drawing("cobertura")
+    d.area(box(-0.6, -1.50, 4.6, 0.0), "sidewalk")
+    d.rect(0.0, 0.0, LOTE_W, LOTE_L, "ghost", layer=0)
+
+    # garagem: piso visto entre as vigas do pergolado
+    d.area(box(0.15, 0.0, 3.85, GARAGEM_L), "grasspave")
+    d.muro(0.00, 0.00, 0.15, GARAGEM_L)
+    d.muro(3.85, 0.00, 4.00, GARAGEM_L)
+    d.rect(0.15, 0.0, 3.85, 0.15, "pergbeam", layer=2)
+    for i in range(11):
+        y = 0.40 + i * 0.50
+        d.rect(0.15, y - 0.03, 3.85, y + 0.03, "pergbeam", layer=2)
+
+    # telhados
+    planos = [(Y_FRENTE[1], SHEDS[0][1], -1), (Y_SALA[1], SHEDS[1][1], -1), (Y_Q1[1], SHEDS[2][1], -1)]
+    for y0, y1, _ in planos:
+        d.area(box(0.15, y0, 3.85, y1), "roofflat")
+    for nome, yv, ye, x0, x1 in SHEDS:
+        d.area(box(0.15, yv, 3.85, ye), "roofshed")
+        n = int((ye - yv) / 0.25)
+        for i in range(1, n):
+            y = yv + i * (ye - yv) / n
+            d.line([(0.15, y), (3.85, y)], "roofline", layer=1)
+        d.rect(0.15, yv - 0.04, 3.85, yv + 0.04, "shededge", layer=3)
+        d.rect(x0, yv - 0.05, x1, yv + 0.05, "glassfill", layer=3)
+
+    # platibanda e paredes de divisa vistas de cima
+    for r in ((0.0, GARAGEM_L, 0.15, LOTE_L), (3.85, GARAGEM_L, 4.0, LOTE_L),
+              (0.15, *Y_FRENTE[:1], 3.85, Y_FRENTE[1]), (0.15, Y_FUNDO[0], 3.85, Y_FUNDO[1])):
+        d.wall(*r)
+
+    # calhas nos pontos baixos
+    for y in (Y_FRENTE[1] + 0.08, Y_SALA[1], Y_Q1[1], Y_FUNDO[0] - 0.08):
+        d.line([(0.15, y), (3.85, y)], "gutter", layer=3)
+    # domus
+    for cx, cy, s in DOMUS:
+        h = s / 2
+        d.rect(cx - h, cy - h, cx + h, cy + h, "domus", layer=3)
+        d.circle((cx, cy), h * 0.7, "domusin", layer=3)
+
+    # setas de caimento
+    slope_arrow(d, 3.40, 7.55, 6.00, "5%")
+    slope_arrow(d, 3.40, 11.65, 10.65, "5%")
+    slope_arrow(d, 3.40, 17.00, 15.10, "5%")
+    for nome, yv, ye, x0, x1 in SHEDS:
+        pct = round(100 * (Z_SHED - Z_COB) / (ye - yv))
+        slope_arrow(d, 3.40, yv + 0.30, ye - 0.30, f"{pct}%")
+
+    # rótulos
+    d.label((2.0, 2.70), "PERGOLADO", "vigas de madeira a cada 0,50", size=0.20, sub=0.14)
+    for nome, yv, ye, x0, x1 in SHEDS:
+        d.label((1.75, (yv + ye) / 2), nome.upper(), "janela alta voltada para a rua", size=0.18, sub=0.13)
+    d.text((1.75, 6.80), "telha termoacústica", size=0.13, cls="tiny2")
+    d.text((1.40, 11.15), "laje / telha", size=0.12, cls="tiny2")
+    d.text((1.30, 16.55), "telha", size=0.12, cls="tiny2")
+    d.text((-0.25, 10.35), "calha", size=0.12, cls="accenttext")
+    d.text((-0.25, 14.80), "calha", size=0.12, cls="accenttext")
+    d.text((-0.25, 5.80), "calha", size=0.12, cls="accenttext")
+    d.text((-0.25, 19.75), "calha", size=0.12, cls="accenttext")
+    d.text((2.0, -1.05), "CALÇADA", size=0.15, cls="tiny2", rot=-90)
+    for (nome, yv, ye, x0, x1), cod in zip(SHEDS, ("JS1", "JS2", "JS3")):
+        d.text((x0 - 0.30, yv), cod, size=0.12, cls="code")
+
+    dim_chain(d, 1, 4.45, [Y_FRENTE[0], SHEDS[0][1], SHEDS[0][2], SHEDS[1][1], SHEDS[1][2], SHEDS[2][1],
+                           SHEDS[2][2], LOTE_L], ext=4.0)
+    section_marks(d, ys=(-2.15, 21.30))
+    scale_bar(d, (4.85, -2.45))
+    d.finalize()
+    return d
+
+
+# --------------------------------------------------------------------------
+# CORTE AA (x = 2,00, vista para a direita)
 # --------------------------------------------------------------------------
 def corte_aa():
     d = Drawing("corte", plano=False)
     U0 = -2.2
-    # terreno (hachura) e rua
     d.area(box(U0, -0.45, 20.25, 0.0), "terrain")
     d.line([(U0, -0.15), (-1.9, -0.15), (-1.9, 0.0), (20.25, 0.0)], "ground", layer=3)
 
-    solids = []
-    # lajes de piso
-    solids.append(box(0.0, -0.10, GARAGEM_L, Z_GARAGEM))
-    solids.append(box(GARAGEM_L, -0.10, FIM_CASA, Z_TERREO))
-    # laje do pavimento superior (com vazio da escada)
-    solids.append(box(0.0, Z_LAJE_INF, VAZIO_Y0, Z_SUP))
-    solids.append(box(ESC_Y1, Z_LAJE_INF, FIM_CASA, Z_SUP))
-    solids.append(box(0.0, Z_VIGA_FRENTE, 0.15, Z_SUP))           # viga sobre o portão
-    # laje de forro (com abertura da claraboia)
-    sky0, sky1 = VAZIO_Y0 + 0.10, ESC_Y1 - 0.10
-    solids.append(box(0.0, Z_FORRO, sky0, Z_LAJE_COB))
-    solids.append(box(sky1, Z_FORRO, FIM_CASA, Z_LAJE_COB))
-    # platibandas
-    solids.append(box(0.0, Z_LAJE_COB, 0.15, Z_PLATIBANDA))
-    solids.append(box(14.55, Z_LAJE_COB, FIM_CASA, Z_PLATIBANDA))
-    # muretas da claraboia
-    solids.append(box(sky0 - 0.10, Z_LAJE_COB, sky0, 6.80))
-    solids.append(box(sky1, Z_LAJE_COB, sky1 + 0.10, 6.95))
-    # paredes cortadas - térreo
-    solids.append(box(5.50, Z_TERREO, 5.65, Z_LAJE_INF))                     # fachada interna
-    solids.append(box(11.90, Z_TERREO, 12.00, Z_LAJE_INF))                   # lavabo
-    solids.append(box(14.55, Z_TERREO, FIM_CASA, Z_TERREO + 1.40))           # fundos (peitoril)
-    solids.append(box(14.55, Z_TERREO + 2.10, FIM_CASA, Z_LAJE_INF))         # verga
-    # paredes cortadas - superior
-    solids.append(box(1.20, Z_SUP + 2.10, 1.35, Z_FORRO))                    # verga porta varanda
-    solids.append(box(5.05, Z_SUP, 5.15, Z_FORRO))
-    solids.append(box(10.75, Z_SUP + 2.10, 10.85, Z_FORRO))                  # verga porta suíte 2
-    solids.append(box(14.55, Z_SUP, FIM_CASA, Z_SUP + 1.00))                 # peitoril
-    solids.append(box(14.55, Z_SUP + 2.20, FIM_CASA, Z_FORRO))               # verga
-    # muro do fundo
-    solids.append(box(MURO_FUNDO, 0.0, LOTE_L, 2.00))
-    # escada (cortada)
-    pts = [(ESC_Y0, Z_TERREO)]
-    for i in range(N_ESPELHOS - 1):
-        y = ESC_Y0 + i * PISO_DEG
-        z = Z_TERREO + (i + 1) * ESPELHO
-        pts += [(y, z), (y + PISO_DEG, z)]
-    pts += [(ESC_Y1, Z_SUP), (ESC_Y1, Z_LAJE_INF)]
-    incl = ESPELHO / PISO_DEG
-    esp = 0.13 / math.cos(math.atan(incl))
-    zwaist_top = Z_TERREO + incl * (ESC_Y1 - ESC_Y0) - esp
-    u_floor = ESC_Y0 + esp / incl
-    pts += [(ESC_Y1, zwaist_top), (u_floor, Z_TERREO)]
-    solids.append(Polygon(pts))
-    massa = unary_union(solids)
+    s = []
+    s.append(box(0.0, -0.10, GARAGEM_L, Z_GARAGEM))                       # piso drenante
+    s.append(box(GARAGEM_L, -0.10, LOTE_L, Z_PISO))                       # contrapiso da casa
+    s.append(box(5.50, Z_PISO, 5.65, Z_PISO + 1.00))                      # fachada: peitoril J1
+    s.append(box(5.50, Z_PISO + 2.20, 5.65, Z_PLATIBANDA))                # verga + platibanda
+    for y0, y1 in ((Y_SALA[1], Y_LAV[0]), (Y_LAV[1], Y_Q1[0]), (Y_Q1[1], Y_BAN[0]), (Y_BAN[1], Y_Q2[0])):
+        s.append(box(y0, Z_PISO, y1, Z_COB))
+    s.append(box(Y_FUNDO[0], Z_PISO, LOTE_L, Z_PLATIBANDA))               # fundo + platibanda
+    s.append(box(SHEDS[0][1] - 0.06, Z_FORRO, SHEDS[0][1] + 0.06, Z_COB))  # viga sob o vidro do shed 1
+    # coberturas planas
+    for y0, y1 in ((Y_FRENTE[1], SHEDS[0][1] - 0.06), (Y_LAV[0] - 0.10, SHEDS[1][1] - 0.05),
+                   (Y_BAN[0] - 0.10, SHEDS[2][1] - 0.05)):
+        s.append(box(y0, Z_COB - 0.12, y1, Z_COB))
+    # sheds
+    for nome, yv, ye, x0, x1 in SHEDS:
+        s.append(box(yv - 0.06, Z_VIDRO_TOPO, yv + 0.06, Z_SHED))
+        s.append(Polygon([(yv, Z_SHED - 0.12), (yv, Z_SHED), (ye, Z_COB), (ye, Z_COB - 0.12)]))
+    # pergolado: viga frontal e vigas transversais (cortadas)
+    s.append(box(0.0, 2.40, 0.15, Z_MURO))
+    for i in range(11):
+        y = 0.40 + i * 0.50
+        s.append(box(y - 0.03, Z_MURO - 0.20, y + 0.03, Z_MURO))
+    massa = unary_union(s)
     d.area(massa, "cut", layer=2)
 
-    # telhado (telha termoacústica sobre estrutura metálica leve)
-    for a, b in ((0.15, sky0 - 0.10), (sky1 + 0.10, 14.55)):
-        d.rect(a, Z_TELHA, b, Z_TELHA + 0.05, "roof", layer=3)
-        n = max(1, int((b - a) / 1.6))
-        for i in range(n + 1):
-            u = a + 0.15 + i * (b - a - 0.30) / n
-            d.line([(u, Z_LAJE_COB), (u, Z_TELHA)], "elev", layer=3)
-    # vidro da claraboia
-    d.line([(sky0 - 0.10, 6.80), (sky1 + 0.10, 6.95)], "glassline", layer=3)
-    d.line([(sky0 - 0.10, 6.83), (sky1 + 0.10, 6.98)], "glassline", layer=3)
+    # forro: plano e inclinado sob os sheds
+    for y0, y1 in ((Y_FRENTE[1], SHEDS[0][1] - 0.06), (Y_LAV[0], Y_LAV[1]), (Y_BAN[0], Y_BAN[1])):
+        d.line([(y0, Z_FORRO), (y1, Z_FORRO)], "forro", layer=3)
+    for nome, yv, ye, x0, x1 in SHEDS:
+        y_in = yv + 0.06
+        d.line([(y_in, Z_VIDRO_TOPO - 0.05), (ye, Z_FORRO)], "forro", layer=3)
+        d.line([(yv - 0.02, Z_COB), (yv - 0.02, Z_VIDRO_TOPO)], "glassline", layer=3)
+        d.line([(yv + 0.02, Z_COB), (yv + 0.02, Z_VIDRO_TOPO)], "glassline", layer=3)
+    # calhas
+    for y in (Y_FRENTE[1] + 0.10, Y_SALA[1], Y_Q1[1], Y_FUNDO[0] - 0.10):
+        d.poly([(y - 0.08, Z_COB + 0.02), (y - 0.08, Z_COB - 0.08), (y + 0.08, Z_COB - 0.08), (y + 0.08, Z_COB + 0.02)],
+               "gutterfill", layer=3)
+    # domus (lavabo e banho 1)
+    for cx, cy, sd in DOMUS:
+        if abs(cx - CORTE_X) <= sd / 2:
+            h = sd / 2
+            pts = [(cy - h + 2 * h * i / 16, Z_COB + 0.28 * math.sin(math.pi * i / 16)) for i in range(17)]
+            d.line(pts, "glassline", layer=3)
+            d.line([(cy - h, Z_COB), (cy - h, Z_FORRO)], "elevlight", layer=3)
+            d.line([(cy + h, Z_COB), (cy + h, Z_FORRO)], "elevlight", layer=3)
 
     # esquadrias no corte
-    d.rect(0.0, Z_GARAGEM, 0.05, 2.40, "leaf", layer=3)                       # portão
-    d.rect(0.0, Z_SUP, 0.04, Z_SUP + 1.10, "glassfill", layer=3)              # guarda-corpo varanda
-    d.line([(1.255, Z_SUP), (1.255, Z_SUP + 2.10)], "glassline", layer=3)     # porta de correr P4
-    d.line([(1.295, Z_SUP), (1.295, Z_SUP + 2.10)], "glassline", layer=3)
-    d.line([(14.61, Z_TERREO + 1.40), (14.61, Z_TERREO + 2.10)], "glassline", layer=3)
-    d.line([(14.64, Z_TERREO + 1.40), (14.64, Z_TERREO + 2.10)], "glassline", layer=3)
-    d.line([(14.61, Z_SUP + 1.00), (14.61, Z_SUP + 2.20)], "glassline", layer=3)
-    d.line([(14.64, Z_SUP + 1.00), (14.64, Z_SUP + 2.20)], "glassline", layer=3)
-    d.rect(VAZIO_Y0 - 0.02, Z_SUP, VAZIO_Y0 + 0.02, Z_SUP + 1.10, "glassfill", layer=3)
+    d.rect(0.0, Z_GARAGEM, 0.05, Z_PORTAO, "leaf", layer=3)                 # portão
+    d.line([(5.555, Z_PISO + 1.00), (5.555, Z_PISO + 2.20)], "glassline", layer=3)
+    d.line([(5.595, Z_PISO + 1.00), (5.595, Z_PISO + 2.20)], "glassline", layer=3)
+    # muro da garagem visto ao fundo
+    d.line([(0.0, Z_MURO), (GARAGEM_L, Z_MURO)], "elevlight", layer=1)
 
-    # em vista (além do plano de corte): corrimão da escada e guarda-corpo do vazio
-    d.line([(ESC_Y0, Z_TERREO + 0.90), (ESC_Y1, Z_SUP + 0.90)], "elev", layer=3)
-    d.line([(VAZIO_Y0, Z_SUP + 1.10), (ESC_Y1, Z_SUP + 1.10)], "elev", layer=3)
-    for u in (VAZIO_Y0 + 1.1, VAZIO_Y0 + 2.2):
-        d.line([(u, Z_SUP), (u, Z_SUP + 1.10)], "elevlight", layer=3)
-    # porta P1 e janela J1 vistas ao fundo
-    d.line([(5.65, 2.25), (5.50, 2.25)], "elevlight", layer=3)
+    # luz natural entrando pelos sheds (raios interrompidos no primeiro obstáculo)
+    alvo = massa.buffer(-0.001)
+    for nome, yv, ye, x0, x1 in SHEDS:
+        for zj in (3.35, 3.70):
+            p0 = (yv - 0.45, zj + 0.57)
+            pj = (yv, zj)
+            dx, dz = pj[0] - p0[0], pj[1] - p0[1]
+            k = (pj[1] - 1.75) / -dz
+            far = (pj[0] + dx * k, 1.75)
+            ray = LineString([(pj[0] + 0.07, pj[1] + dz / dx * 0.07), far])
+            end = far
+            hit = ray.intersection(alvo)
+            if not hit.is_empty:
+                pts = []
+                for g in getattr(hit, "geoms", [hit]):
+                    pts += list(g.coords)
+                end = min(pts, key=lambda q: math.dist(q, pj))
+            d.line([p0, end], "light", layer=1)
 
-    # luz natural pela claraboia: raios interrompidos no primeiro obstáculo
-    from shapely.geometry import LineString, Point
-    for ut, ub in ((6.85, 6.55), (7.75, 8.05), (8.65, 9.55), (9.35, 10.70)):
-        top = (ut, 6.70)
-        ray = LineString([top, (ub, Z_TERREO)])
-        hit = ray.intersection(massa.buffer(-0.001))
-        end = (ub, Z_TERREO)
-        if not hit.is_empty:
-            pts = []
-            for g in getattr(hit, "geoms", [hit]):
-                pts += list(g.coords)
-            pts = [q for q in pts if q[1] < 6.5]
-            if pts:
-                end = max(pts, key=lambda q: q[1])
-        d.line([top, end], "light", layer=1)
+    # rótulos
+    zt = Z_PISO + 1.15
+    d.text((2.75, 1.30), "GARAGEM", size=0.22, cls="label")
+    d.text((2.75, 0.98), "pergolado + piso drenante", size=0.13, cls="tiny2")
+    d.text((7.10, zt + 0.55), "SALA + COZINHA", size=0.19, cls="label")
+    d.text((11.15, zt + 0.12), "LAVABO +", size=0.13, cls="label")
+    d.text((11.15, zt - 0.10), "LAVAND.", size=0.13, cls="label")
+    d.text((13.38, zt), "SUÍTE 1", size=0.19, cls="label")
+    d.text((16.00, zt), "BANHO 1", size=0.16, cls="label")
+    d.text((18.52, zt), "SUÍTE 2", size=0.19, cls="label")
+    for nome, yv, ye, x0, x1 in SHEDS:
+        d.text((yv + 0.75, Z_SHED + 0.32), nome, size=0.14, cls="accenttext")
+    d.text((10.90, 3.62), "domus", size=0.12, cls="tiny2")
+    d.text((15.95, 3.62), "domus", size=0.12, cls="tiny2")
 
-    # rótulos dos ambientes
-    zt = Z_TERREO + 1.25
-    zs = Z_SUP + 1.55
-    d.text((2.75, 1.30), "GARAGEM", size=0.24, cls="label")
-    d.text((2.75, 0.95), "pé-direito livre 2,50 sob a viga", size=0.14, cls="tiny2")
-    d.text((6.95, 2.55), "ESCADA", size=0.20, cls="label")
-    d.text((8.95, 0.80), "armário", size=0.13, cls="tiny2")
-    d.text((10.90, zt), "JANTAR", size=0.20, cls="label")
-    d.text((13.27, zt + 0.20), "LAVABO +", size=0.15, cls="label")
-    d.text((13.27, zt - 0.05), "LAVANDERIA", size=0.15, cls="label")
-    d.text((17.30, 0.70), "QUINTAL", size=0.22, cls="label")
-    d.text((0.62, Z_SUP + 1.75), "VARANDA", size=0.16, cls="label")
-    d.text((3.20, zs), "SUÍTE 1", size=0.22, cls="label")
-    d.text((8.15, Z_SUP + 2.15), "VAZIO", size=0.18, cls="label")
-    d.text((12.70, zs), "SUÍTE 2", size=0.22, cls="label")
-    d.text((8.15, 7.25), "CLARABOIA", size=0.16, cls="accenttext")
-    d.text((4.6, 6.45), "telha termoacústica oculta pela platibanda", size=0.13, cls="tiny2")
-
-    # níveis
-    for z, t in ((Z_CALCADA, "±0,00 calçada"), (Z_TERREO, f"+{fmt(Z_TERREO)} térreo"),
-                 (Z_SUP, f"+{fmt(Z_SUP)} superior"), (Z_FORRO, f"+{fmt(Z_FORRO)} forro"),
-                 (Z_PLATIBANDA, f"+{fmt(Z_PLATIBANDA)} platibanda")):
+    for z, t in ((Z_CALCADA, "±0,00 calçada"), (Z_PISO, f"+{fmt(Z_PISO)} piso"),
+                 (Z_FORRO, f"+{fmt(Z_FORRO)} forro"), (Z_PLATIBANDA, f"+{fmt(Z_PLATIBANDA)} platibanda"),
+                 (Z_SHED, f"+{fmt(Z_SHED)} topo dos sheds")):
         d.poly([(20.45, z), (20.33, z + 0.13), (20.57, z + 0.13)], "levelmark", layer=4)
         d.line([(20.25, z), (20.70, z)], "dim", layer=4)
         d.text((20.75, z + 0.12), t, size=0.15, cls="dimtext", anchor="start", layer=5)
 
-    dim_chain(d, 1, -0.65, [0.0, Z_TERREO, Z_LAJE_INF, Z_SUP, Z_FORRO, Z_LAJE_COB, Z_PLATIBANDA], ext=0.0,
-              labels=[None, "2,70", None, "2,70", None, "0,75"])
-    dim_chain(d, 1, -1.25, [0.0, Z_PLATIBANDA], ext=0.0)
-    dim_chain(d, 0, -0.85, [0.0, GARAGEM_L, FIM_CASA, LOTE_L], toff=-0.17, labels=["5,50", "9,20", "5,30"])
+    dim_chain(d, 1, -0.65, [0.0, Z_PISO, Z_FORRO, Z_PLATIBANDA], ext=0.0, labels=[None, "2,70", "0,65"])
+    dim_chain(d, 1, -1.25, [0.0, Z_SHED], ext=0.0)
+    dim_chain(d, 0, -0.85, [0.0, GARAGEM_L, LOTE_L], toff=-0.17, labels=["5,50", "14,50"])
     d.text((-1.05, 0.30), "rua", size=0.14, cls="tiny2")
     scale_bar(d, (-2.45, -1.55))
     return d
@@ -722,52 +667,39 @@ def fachada():
     d = Drawing("fachada", plano=False)
     d.area(box(-0.6, -0.30, 4.6, 0.0), "terrain")
     d.line([(-0.6, 0.0), (4.6, 0.0)], "ground", layer=3)
-    # recuos em sombra (garagem e varanda)
-    d.area(box(0.15, 0.0, 3.85, Z_VIGA_FRENTE), "shadow")
-    d.area(box(0.15, Z_SUP, 3.85, Z_FORRO), "recess")
-    # ripado de madeira na parede da suíte (atrás da varanda)
-    d.area(box(2.60, Z_SUP, 3.85, Z_FORRO), "wood")
-    for i in range(1, 13):
-        u = 2.60 + i * (3.85 - 2.60) / 13
-        d.line([(u, Z_SUP), (u, Z_FORRO)], "slat", layer=1)
-    # porta de correr de vidro da suíte
-    d.area(box(0.40, Z_SUP, 2.40, Z_SUP + 2.10), "glasspane", layer=1)
-    d.rect(0.40, Z_SUP, 2.40, Z_SUP + 2.10, "frame", layer=3)
-    d.line([(1.40, Z_SUP), (1.40, Z_SUP + 2.10)], "frame", layer=3)
-    # moldura: divisas, viga, platibanda
-    frame = unary_union([box(0.0, 0.0, 0.15, Z_PLATIBANDA), box(3.85, 0.0, 4.0, Z_PLATIBANDA),
-                         box(0.15, Z_VIGA_FRENTE, 3.85, Z_SUP), box(0.15, Z_FORRO, 3.85, Z_PLATIBANDA)])
-    d.area(frame, "facade", layer=2)
-    d.line([(0.0, Z_LAJE_COB + 0.0), (4.0, Z_LAJE_COB)], "elevlight", layer=3)
-    # guarda-corpo de vidro
-    d.area(box(0.15, Z_SUP, 3.85, Z_SUP + 1.10), "glassrail", layer=3)
-    d.line([(0.15, Z_SUP + 1.10), (3.85, Z_SUP + 1.10)], "frame", layer=3)
-    for u0 in (0.6, 2.2):
-        d.line([(u0, Z_SUP + 0.20), (u0 + 0.35, Z_SUP + 0.85)], "reflect", layer=3)
-        d.line([(u0 + 0.18, Z_SUP + 0.20), (u0 + 0.42, Z_SUP + 0.62)], "reflect", layer=3)
-    # jardineira atrás do vidro
-    for c in ((0.45, Z_SUP + 0.55), (0.85, Z_SUP + 0.65), (1.30, Z_SUP + 0.52), (1.65, Z_SUP + 0.60)):
-        d.circle(c, 0.22, "plantelev", layer=3)
-    # portões
-    d.area(box(0.15, 0.0, 2.85, 2.40), "gate", layer=3)
-    d.area(box(2.95, 0.0, 3.85, 2.40), "gate", layer=3)
-    d.area(box(2.85, 0.0, 2.95, Z_VIGA_FRENTE), "facade", layer=3)
-    for a, b in ((0.15, 2.85), (2.95, 3.85)):
+    # ao fundo (5,50 m atrás): fachada da casa, platibanda e shed 1
+    d.area(box(0.0, Z_MURO, 4.0, Z_PLATIBANDA), "facade2", layer=0)
+    d.area(box(0.0, Z_PLATIBANDA, 4.0, Z_SHED), "facade3", layer=0)
+    x0, x1 = SHEDS[0][3], SHEDS[0][4]
+    d.area(box(x0, Z_PLATIBANDA, x1, Z_VIDRO_TOPO), "glasspane", layer=1)
+    d.rect(x0, Z_PLATIBANDA, x1, Z_VIDRO_TOPO, "frame", layer=3)
+    for u in (x0 + (x1 - x0) / 3, x0 + 2 * (x1 - x0) / 3):
+        d.line([(u, Z_PLATIBANDA), (u, Z_VIDRO_TOPO)], "frame", layer=3)
+    d.line([(0.0, Z_PLATIBANDA), (4.0, Z_PLATIBANDA)], "elev", layer=3)
+    d.rect(0.0, Z_MURO, 4.0, Z_SHED, "elev", layer=3)
+    # vão entre portões e pergolado (sombra da garagem)
+    d.area(box(0.15, Z_PORTAO, 3.85, 2.40), "shadow", layer=1)
+    # primeiro plano: muros, pilar, viga do pergolado, portões
+    d.area(unary_union([box(0.0, 0.0, 0.15, Z_MURO), box(3.85, 0.0, 4.0, Z_MURO),
+                        box(1.05, 0.0, 1.15, 2.40)]), "facade", layer=2)
+    d.area(box(0.15, 2.40, 3.85, Z_MURO), "wood", layer=2)
+    d.rect(0.15, 2.40, 3.85, Z_MURO, "frame", layer=3)
+    for a, b in ((0.15, 1.05), (1.15, 3.85)):
+        d.area(box(a, 0.0, b, Z_PORTAO), "gate", layer=3)
         n = int((b - a) / 0.11)
         for i in range(1, n):
             u = a + i * (b - a) / n
-            d.line([(u, 0.05), (u, 2.35)], "slat2", layer=3)
-        d.rect(a, 0.0, b, 2.40, "frame", layer=3)
-    d.line([(3.10, 1.00), (3.10, 1.25)], "frame", layer=3)
+            d.line([(u, 0.05), (u, Z_PORTAO - 0.05)], "slat2", layer=3)
+        d.rect(a, 0.0, b, Z_PORTAO, "frame", layer=3)
+    d.line([(0.90, 0.95), (0.90, 1.20)], "frame", layer=3)
 
-    # anotações de materiais (lado direito)
     notes = [
-        (6.15, (3.60, 6.15), "Platibanda — reboco e pintura"),
-        (5.30, (2.15, 4.95), "Porta de correr em vidro (suíte 1)"),
-        (4.55, (3.30, 4.55), "Ripado de madeira"),
-        (3.55, (3.60, 3.55), "Guarda-corpo em vidro laminado, h = 1,10"),
-        (1.55, (2.45, 1.55), "Portão basculante ripado, 2,70 × 2,40"),
-        (0.75, (3.55, 0.75), "Portão social, 0,90 × 2,40"),
+        (4.40, (1.10, 3.75), "Shed 1 — janela alta (sala e cozinha)"),
+        (3.70, (3.60, 3.20), "Platibanda — reboco e pintura"),
+        (2.85, (2.80, 2.60), "Pergolado de madeira sobre a garagem"),
+        (1.60, (2.50, 1.60), "Portão basculante ripado, 2,70 × 2,20"),
+        (0.80, (0.60, 0.80), "Portão social, 0,90 × 2,20"),
+        (0.25, (3.92, 0.40), "Muro de divisa, h = 2,80"),
     ]
     for z, (u0, z0), t in notes:
         d.line([(u0, z0), (4.35, z), (4.55, z)], "leader", layer=4)
@@ -776,12 +708,10 @@ def fachada():
 
     dim_chain(d, 0, -0.55, [0.0, 0.15, 3.85, 4.0], ext=0.0, toff=-0.17)
     dim_chain(d, 0, -1.00, [0.0, 4.0], ext=0.0, toff=-0.17)
-    dim_chain(d, 1, -0.45, [0.0, Z_VIGA_FRENTE, Z_SUP, Z_FORRO, Z_PLATIBANDA], ext=0.0)
-    dim_chain(d, 1, -0.95, [0.0, Z_PLATIBANDA], ext=0.0)
+    dim_chain(d, 1, -0.45, [0.0, Z_PORTAO, Z_MURO, Z_PLATIBANDA, Z_SHED], ext=0.0, label_min=0.5)
+    dim_chain(d, 1, -0.95, [0.0, Z_SHED], ext=0.0)
     scale_bar(d, (5.0, -0.95))
     return d
-
-
 # --------------------------------------------------------------------------
 # Renderização SVG
 # --------------------------------------------------------------------------
@@ -849,6 +779,23 @@ STYLE_STANDALONE = """
   .leader{fill:none;stroke:#5c636b;stroke-width:.6}
   .leaderdot{fill:#22262b}
   .note{fill:#2b3137}
+  .grasspave{fill:#e7eedf}
+  .pergola{fill:none;stroke:#a4835f;stroke-width:.7;stroke-dasharray:5 4}
+  .pergbeam{fill:#c49a6c;stroke:#7e5532;stroke-width:.5}
+  .roofflat{fill:#e3e6e8}
+  .roofshed{fill:#cfd5da}
+  .roofline{fill:none;stroke:#aeb5bc;stroke-width:.5}
+  .shededge{fill:#22262b}
+  .gutter{fill:none;stroke:#2f6db3;stroke-width:.9;stroke-dasharray:6 3}
+  .gutterfill{fill:#ffffff;stroke:#22262b;stroke-width:.6}
+  .domus{fill:#dbe8f3;stroke:#2f6db3;stroke-width:.8}
+  .domusin{fill:none;stroke:#2f6db3;stroke-width:.6}
+  .skylightbox{fill:none;stroke:#2f6db3;stroke-width:.6;stroke-dasharray:3 2}
+  .slope{fill:none;stroke:#3b4249;stroke-width:.8}
+  .slopehead{fill:#3b4249}
+  .forro{fill:none;stroke:#59616a;stroke-width:1.6}
+  .facade2{fill:#d9d5cd}
+  .facade3{fill:#cbc6bd}
   .barfill{fill:#22262b;stroke:#22262b;stroke-width:.6}
   .barempty{fill:#ffffff;stroke:#22262b;stroke-width:.6}
 """
@@ -974,10 +921,13 @@ LAYER_OF = {
     "arrow": "ESCADA", "rail": "ESCADA", "rail2": "ESCADA",
     "secline": "CORTE-INDICACAO", "secarrow": "CORTE-INDICACAO", "secbubble": "CORTE-INDICACAO",
     "secletter": "CORTE-INDICACAO",
+    "pergbeam": "PERGOLADO", "pergola": "PERGOLADO", "roofflat": "COBERTURA", "roofshed": "COBERTURA",
+    "roofline": "COBERTURA", "shededge": "COBERTURA", "gutter": "COBERTURA", "domus": "COBERTURA",
+    "domusin": "COBERTURA", "skylightbox": "PROJECOES", "forro": "CORTE-ELEMENTOS",
 }
 LAYER_COLORS = {"PAREDES": 7, "MUROS": 8, "ESQUADRIAS": 5, "MOBILIARIO": 8, "COTAS": 3, "TEXTOS": 7,
                 "ESCADA": 7, "PROJECOES": 9, "CORTE-INDICACAO": 1, "CORTE-ELEMENTOS": 7, "FACHADA": 7,
-                "PISOS": 9, "VISTAS": 8}
+                "PISOS": 9, "VISTAS": 8, "PERGOLADO": 32, "COBERTURA": 8}
 
 
 def to_dxf(drawings, path):
@@ -1045,119 +995,11 @@ def to_dxf(drawings, path):
     doc.saveas(path)
 
 
-# --------------------------------------------------------------------------
-# Quadro de áreas e índices
-# --------------------------------------------------------------------------
-def quadro():
-    at, asup = areas_terreo(), areas_superior()
-    lote = LOTE_W * LOTE_L
-    terreo_constr = LOTE_W * FIM_CASA                 # inclui garagem coberta
-    sup_constr = LOTE_W * FIM_CASA                    # inclui varanda e vazio
-    total = terreo_constr + sup_constr
-    util_t = at["GARAGEM"] + at["SALA + COZINHA"] + at["LAVABO + LAVANDERIA"]
-    util_s = sum(v for k, v in asup.items() if k != "VAZIO DA ESCADA")
-    return dict(
-        terreo=[("Garagem (coberta)", at["GARAGEM"]), ("Sala + cozinha integradas (inclui escada)", at["SALA + COZINHA"]),
-                ("Lavabo + lavanderia", at["LAVABO + LAVANDERIA"])],
-        superior=[("Varanda", asup["VARANDA"]), ("Suíte 1 (quarto)", asup["SUÍTE 1"]), ("Banho suíte 1", asup["BANHO 1"]),
-                  ("Circulação", asup["CIRCULAÇÃO"]), ("Banho suíte 2", asup["BANHO 2"]), ("Suíte 2 (quarto)", asup["SUÍTE 2"])],
-        quintal=at["QUINTAL"], vazio=asup["VAZIO DA ESCADA"],
-        util_t=util_t, util_s=util_s, terreo_constr=terreo_constr, sup_constr=sup_constr, total=total,
-        lote=lote, to=terreo_constr / lote, ca=total / lote, perm=at["QUINTAL"] / lote,
-    )
-
-
-# --------------------------------------------------------------------------
-# Saídas
-# --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
-# Textos do memorial (usados na página, na prancha e no README)
-# --------------------------------------------------------------------------
-PROGRAMA = [
-    ("Garagem de 5,50 m ocupando toda a frente",
-     "Garagem coberta de 4,00 × 5,50 m (3,70 m livres entre paredes), com portão basculante de 2,70 m "
-     "e portão social de 0,90 m. Cabe um carro de até 5 m, com espaço para abrir a porta e passar ao lado."),
-    ("Sala e cozinha conjugadas",
-     "Um só ambiente de 28,16 m² com estar, mesa para 4 e cozinha linear (3,45 m de bancada mais a geladeira), "
-     "aberto para o quintal por uma porta de correr de vidro."),
-    ("Lavabo junto com a lavanderia",
-     "Ambiente único de 4,34 m² nos fundos com vaso, lavatório, tanque e máquina de lavar. "
-     "A janela para o quintal garante ventilação natural."),
-    ("Duas suítes",
-     "No pavimento superior, duas suítes iguais de 3,70 × 3,70 m (13,69 m²), cada uma com banheiro de 4,95 m². "
-     "A suíte da frente tem varanda de 4,44 m² sobre a garagem."),
-]
-
-PARTIDO = [
-    ("Por que sobrado",
-     "Com 3,70 m livres de largura, o programa não cabe num pavimento só sem acabar com o quintal. "
-     "No sobrado, o térreo fica com a parte social e o pavimento de cima com as suítes."),
-    ("Paredes laterais sem janelas",
-     "O Código Civil (art. 1.301) proíbe abrir janelas a menos de 1,5 m da divisa, e num lote de 4 m as duas "
-     "paredes laterais estão na divisa. Por isso toda a luz entra pela frente, pelos fundos e por uma claraboia "
-     "sobre a escada, que funciona como poço de luz para a sala e para a circulação."),
-    ("Escada reta encostada na divisa",
-     "A escada ocupa só 0,90 m de largura e deixa a sala livre. São 16 degraus com espelho de 18 cm e piso de "
-     "28 cm (2 × 18 + 28 = 64 cm, dentro da fórmula de Blondel) e guarda-corpo de 1,10 m. "
-     "Embaixo do trecho mais alto há um armário."),
-    ("Hidráulica concentrada",
-     "O banheiro da suíte 2 fica sobre a bancada da cozinha e o da suíte 1 desce pela mesma parede, com um "
-     "rebaixo de forro de gesso na sala para a tubulação. Cozinha, lavabo e lavanderia ficam nos fundos, perto "
-     "da saída de esgoto."),
-    ("Suíte sobre a garagem",
-     "A suíte 1 e a varanda avançam sobre a garagem. Assim o carro fica coberto e sobram 5,30 m de quintal "
-     "nos fundos para jardim, varal e área permeável."),
-]
-
-MEMORIAL = [
-    ("Alturas", "Pé-direito de 2,70 m nos dois pavimentos e 2,88 m de piso a piso. Na garagem, 2,80 m livres "
-                "sob a laje e 2,50 m sob a viga do portão. Altura total até a platibanda: 6,60 m."),
-    ("Estrutura", "Concreto armado, com pilares embutidos nas paredes de divisa e lajes vencendo o vão de 3,70 m. "
-                  "Uma alternativa é alvenaria estrutural com blocos de 14 cm. O dimensionamento é do projeto "
-                  "estrutural, depois da sondagem do terreno."),
-    ("Paredes", "Paredes de divisa e externas com 15 cm acabadas, internas com 10 cm."),
-    ("Cobertura", "Laje de forro mais telha termoacústica com cerca de 10% de caimento, escondida pela platibanda "
-                  "e com calha interna. Claraboia de vidro laminado sobre a escada, de preferência com abertura "
-                  "para tirar o ar quente."),
-    ("Ventilação dos banheiros", "Os banheiros do pavimento superior ficam no miolo da casa: ventilação por "
-                                 "exaustor com duto até a cobertura ou por domus ventilado."),
-    ("Iluminação", "As aberturas dos quartos e da sala ficam em torno de 1/6 da área de piso, a proporção que muitos "
-                   "códigos de obras pedem para ambientes de permanência prolongada; a claraboia complementa a "
-                   "sala. Confira o índice exigido no código do seu município."),
-    ("Área permeável", "Quintal ajardinado e, se possível, piso drenante na garagem (concregrama ou "
-                       "intertravado permeável)."),
-]
-
-VERIFICAR = [
-    ("Recuo frontal", "Muitas prefeituras exigem recuo frontal de 4 a 5 m. A garagem cumpre esse papel no térreo, "
-                      "mas algumas cidades não permitem construir o pavimento superior sobre o recuo. Nesse caso, a "
-                      "casa precisa avançar sobre o quintal (que cai de 5,30 m para cerca de 1,50 m)."),
-    ("Índices urbanísticos", "Taxa de ocupação de 73,5%, coeficiente de aproveitamento de 1,47 e permeabilidade "
-                             "de até 23,8%. Compare com o zoneamento do lote."),
-    ("Aprovação", "Este é um anteprojeto. Para construir, é preciso o projeto legal assinado por arquiteto ou "
-                  "engenheiro (RRT/ART), além dos projetos estrutural, elétrico e hidrossanitário."),
-]
-
-ESQUADRIAS = [
-    ("P1", "Porta de entrada, de giro", "0,90 × 2,10", "—", 1),
-    ("P2", "Porta de correr de vidro, 2 folhas (cozinha → quintal)", "1,60 × 2,10", "—", 1),
-    ("P3", "Porta de giro (lavabo + lavanderia)", "0,70 × 2,10", "—", 1),
-    ("P4", "Porta de correr de vidro, 2 folhas (suíte 1 → varanda)", "2,00 × 2,10", "—", 1),
-    ("P5", "Porta de giro (suítes)", "0,80 × 2,10", "—", 2),
-    ("P6", "Porta de giro (banheiros)", "0,70 × 2,10", "—", 2),
-    ("J1", "Janela de correr (sala → garagem)", "1,20 × 1,20", "1,00", 1),
-    ("J2", "Janela basculante (lavanderia)", "1,20 × 0,70", "1,40", 1),
-    ("J3", "Janela de correr (suíte 2)", "2,00 × 1,20", "1,00", 1),
-    ("PG", "Portão basculante ripado", "2,70 × 2,40", "—", 1),
-    ("PS", "Portão social ripado", "0,90 × 2,40", "—", 1),
-]
 
 FONTS = ("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700"
          "&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap")
 
-# --------------------------------------------------------------------------
-# Página HTML (artifact) - cores por tokens, tema claro e escuro
-# --------------------------------------------------------------------------
+
 PAGE_CSS = r"""
 /* Layout: prancha de desenho — desenhos largos alinhados pelo mesmo eixo de profundidade, texto em coluna estreita */
 :root{
@@ -1167,6 +1009,7 @@ PAGE_CSS = r"""
   --terrainbg:#eeece6; --terrainline:#b8b1a3; --roof:#7b838b; --muro:#9aa1a8; --murol:#5f666d;
   --facade:#e6e2da; --recess:#d4d0c7; --shadow:#3a3f45; --wood:#b9855a; --woodline:#7e5532;
   --gate:#4a5057; --gateline:#2a2e33; --glasspane:#a9c4dc; --glassrail:#cfe0ee; --plant:#8fb37c; --reflect:#ffffff;
+  --grass:#e4ecdb; --roofflat:#e2e5e7; --roofshed:#ccd2d7; --facade2:#d8d4cc; --facade3:#c9c4bb;
   --f-display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
   --f-body:"Source Sans 3","Segoe UI",system-ui,-apple-system,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -1178,6 +1021,7 @@ PAGE_CSS = r"""
   --terrainbg:#1d2023; --terrainline:#3c4248; --roof:#8a939b; --muro:#59626a; --murol:#8a939b;
   --facade:#2f3338; --recess:#262a2f; --shadow:#0c0e10; --wood:#9a6b45; --woodline:#5f3f22;
   --gate:#5a626a; --gateline:#3a4046; --glasspane:#3d5a75; --glassrail:#2c4256; --plant:#5f8a52; --reflect:#c9d8e6;
+  --grass:#1e2a1c; --roofflat:#22272b; --roofshed:#2b3238; --facade2:#2a2e33; --facade3:#33383d;
   color-scheme:dark;
 }}
 :root[data-theme="dark"]{
@@ -1187,6 +1031,7 @@ PAGE_CSS = r"""
   --terrainbg:#1d2023; --terrainline:#3c4248; --roof:#8a939b; --muro:#59626a; --murol:#8a939b;
   --facade:#2f3338; --recess:#262a2f; --shadow:#0c0e10; --wood:#9a6b45; --woodline:#5f3f22;
   --gate:#5a626a; --gateline:#3a4046; --glasspane:#3d5a75; --glassrail:#2c4256; --plant:#5f8a52; --reflect:#c9d8e6;
+  --grass:#1e2a1c; --roofflat:#22272b; --roofshed:#2b3238; --facade2:#2a2e33; --facade3:#33383d;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -1346,218 +1191,33 @@ section{display:grid;gap:18px}
 .dwg .leader{fill:none;stroke:var(--ink2);stroke-width:.6}
 .dwg .leaderdot{fill:var(--ink)}
 .dwg .note{fill:var(--ink);font-family:var(--f-body)}
+.dwg .grasspave{fill:var(--grass)}
+.dwg .pergola{fill:none;stroke:var(--woodline);stroke-width:.7;stroke-dasharray:5 4;opacity:.7}
+.dwg .pergbeam{fill:var(--wood);stroke:var(--woodline);stroke-width:.5}
+.dwg .roofflat{fill:var(--roofflat)}
+.dwg .roofshed{fill:var(--roofshed)}
+.dwg .roofline{fill:none;stroke:var(--furn2);stroke-width:.5}
+.dwg .shededge{fill:var(--poche)}
+.dwg .gutter{fill:none;stroke:var(--accent);stroke-width:.9;stroke-dasharray:6 3}
+.dwg .gutterfill{fill:var(--sheet);stroke:var(--ink);stroke-width:.6}
+.dwg .domus{fill:var(--wet);stroke:var(--accent);stroke-width:.8}
+.dwg .domusin{fill:none;stroke:var(--accent);stroke-width:.6}
+.dwg .skylightbox{fill:none;stroke:var(--accent);stroke-width:.6;stroke-dasharray:3 2}
+.dwg .slope{fill:none;stroke:var(--ink2);stroke-width:.8}
+.dwg .slopehead{fill:var(--ink2)}
+.dwg .forro{fill:none;stroke:var(--ink2);stroke-width:1.6}
+.dwg .facade2{fill:var(--facade2)}
+.dwg .facade3{fill:var(--facade3)}
 .dwg .barfill{fill:var(--ink);stroke:var(--ink);stroke-width:.6}
 .dwg .barempty{fill:var(--sheet);stroke:var(--ink);stroke-width:.6}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 """
 
 
+
+
 def _e(t):
     return html.escape(t)
-
-
-def tabela_areas(q):
-    rows = ['<tr class="grp"><td colspan="2">Térreo</td></tr>']
-    rows += [f'<tr><td>{_e(n)}</td><td class="n">{fmt(v)}</td></tr>' for n, v in q["terreo"]]
-    rows.append(f'<tr class="sum"><td>Área útil do térreo</td><td class="n">{fmt(q["util_t"])}</td></tr>')
-    rows.append('<tr class="grp"><td colspan="2">Pavimento superior</td></tr>')
-    rows += [f'<tr><td>{_e(n)}</td><td class="n">{fmt(v)}</td></tr>' for n, v in q["superior"]]
-    rows.append(f'<tr class="sum"><td>Área útil do superior</td><td class="n">{fmt(q["util_s"])}</td></tr>')
-    rows.append(f'<tr><td>Vazio da escada (não somado)</td><td class="n">{fmt(q["vazio"])}</td></tr>')
-    rows.append('<tr class="grp"><td colspan="2">Área construída</td></tr>')
-    rows.append(f'<tr><td>Térreo (inclui garagem coberta)</td><td class="n">{fmt(q["terreo_constr"])}</td></tr>')
-    rows.append(f'<tr><td>Superior (inclui varanda e vazio)</td><td class="n">{fmt(q["sup_constr"])}</td></tr>')
-    rows.append(f'<tr class="total"><td>Total construído</td><td class="n">{fmt(q["total"])} m²</td></tr>')
-    rows.append(f'<tr><td>Quintal descoberto</td><td class="n">{fmt(q["quintal"])}</td></tr>')
-    return ('<table><thead><tr><th>Ambiente</th><th class="n">m²</th></tr></thead><tbody>'
-            + "".join(rows) + "</tbody></table>")
-
-
-def tabela_esquadrias():
-    rows = "".join(f'<tr><td class="mono">{c}</td><td>{_e(t)}</td><td class="n">{d}</td>'
-                   f'<td class="n">{pt}</td><td class="n">{n}</td></tr>' for c, t, d, pt, n in ESQUADRIAS)
-    return ('<table><thead><tr><th>Cód.</th><th>Tipo</th><th class="n">L × H (m)</th>'
-            '<th class="n">Peitoril</th><th class="n">Qtd.</th></tr></thead><tbody>' + rows + "</tbody></table>")
-
-
-def pagina_html(svgs, q):
-    def fig(key, titulo, nota, small=False):
-        svg = svgs[key][0]
-        if small:
-            svg = svg.replace('class="dwg"', 'class="dwg small"', 1)
-        return (f'<figure><figcaption><h3>{titulo}</h3><span>{nota}</span></figcaption>'
-                f'<div class="scroll" tabindex="0" aria-label="{titulo}">{svg}</div>'
-                f'<p class="hint">Arraste para o lado para ver o desenho inteiro →</p></figure>')
-
-    programa = "".join(f'<li><span class="ok">✓ atendido</span><h3>{_e(t)}</h3><p>{_e(x)}</p></li>' for t, x in PROGRAMA)
-    partido = "".join(f'<div class="item"><h3>{_e(t)}</h3><p>{_e(x)}</p></div>' for t, x in PARTIDO)
-    memorial = "".join(f'<div class="item"><h3>{_e(t)}</h3><p>{_e(x)}</p></div>' for t, x in MEMORIAL)
-    verificar = "".join(f'<div class="item"><h3>{_e(t)}</h3><p>{_e(x)}</p></div>' for t, x in VERIFICAR)
-    return f"""<title>Sobrado 4×20</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="{FONTS}">
-<style>{PAGE_CSS}</style>
-<div class="wrap">
-  <header class="head">
-    <div class="intro">
-      <span class="eyebrow">Anteprojeto residencial · lote 4 × 20 m</span>
-      <h1>Sobrado 4×20</h1>
-      <p class="lede">Casa de dois pavimentos com duas suítes, sala e cozinha integradas, lavabo junto com a
-      lavanderia e garagem coberta de 5,50 m ocupando toda a frente do lote.</p>
-    </div>
-    <dl class="carimbo">
-      <div><dt>Lote</dt><dd>4,00 × 20,00 m</dd></div>
-      <div><dt>Área do lote</dt><dd>{fmt(q['lote'])} m²</dd></div>
-      <div><dt>Área construída</dt><dd>{fmt(q['total'])} m²</dd></div>
-      <div><dt>Pavimentos</dt><dd>2 (térreo + superior)</dd></div>
-      <div><dt>Quartos</dt><dd>2 suítes</dd></div>
-      <div><dt>Altura total</dt><dd>6,60 m</dd></div>
-      <div class="full"><dt>Fase</dt><dd>Estudo preliminar · novembro de 2026</dd></div>
-    </dl>
-  </header>
-
-  <section aria-labelledby="h-prog">
-    <h2 id="h-prog">Programa pedido</h2>
-    <ol class="programa">{programa}</ol>
-  </section>
-
-  <section aria-labelledby="h-des">
-    <h2 id="h-des">Desenhos</h2>
-    <div class="legend">
-      <span><i class="lg-wall"></i>parede cortada</span>
-      <span><i class="lg-glass"></i>vidro / esquadria</span>
-      <span><i class="lg-proj"></i>projeção (acima ou abaixo)</span>
-      <span><i class="lg-sec"></i>linha de corte AA</span>
-      <span><i class="lg-sun"></i>luz da claraboia</span>
-    </div>
-    <div class="set">
-      {fig("planta-terreo", "Planta do térreo", "rua à esquerda · cotas em metros")}
-      {fig("planta-superior", "Planta do pavimento superior", "alinhada com o térreo")}
-      {fig("corte-aa", "Corte AA", "longitudinal, pela escada")}
-    </div>
-  </section>
-
-  <section class="duo" aria-label="Fachada e quadro de áreas">
-    {fig("fachada-frontal", "Fachada frontal", "vista da rua", small=True)}
-    <div class="tablebox">
-      <h3 style="padding:10px 0 4px;text-transform:uppercase;letter-spacing:.05em">Quadro de áreas</h3>
-      {tabela_areas(q)}
-      <div class="indices">
-        <div><b>{fmt(q['to'] * 100, 1)}%</b><small>taxa de ocupação</small></div>
-        <div><b>{fmt(q['ca'])}</b><small>coef. de aproveitamento</small></div>
-        <div><b>até {fmt(q['perm'] * 100, 1)}%</b><small>área permeável</small></div>
-      </div>
-    </div>
-  </section>
-
-  <section aria-labelledby="h-part">
-    <h2 id="h-part">Como a casa foi resolvida</h2>
-    <div class="cols">{partido}</div>
-  </section>
-
-  <section aria-labelledby="h-esq">
-    <h2 id="h-esq">Quadro de esquadrias</h2>
-    <div class="tablebox"><div class="scroll">{tabela_esquadrias()}</div></div>
-  </section>
-
-  <section aria-labelledby="h-mem">
-    <h2 id="h-mem">Memorial resumido</h2>
-    <div class="cols">{memorial}</div>
-  </section>
-
-  <section class="aviso" aria-labelledby="h-ver">
-    <h2 id="h-ver">Antes de construir, verifique</h2>
-    <div class="cols">{verificar}</div>
-  </section>
-
-  <footer class="files">
-    <h3>Arquivos no repositório</h3>
-    <p><code>projeto/prancha-a3.pdf</code> prancha única em A3, escala 1:100, para imprimir e levar ao arquiteto ou engenheiro.</p>
-    <p><code>projeto/sobrado-4x20.dxf</code> plantas, corte e fachada para AutoCAD, em metros e separados por camadas.</p>
-    <p><code>gerar_projeto.py</code> modelo paramétrico que gera todos os desenhos e o quadro de áreas.</p>
-  </footer>
-</div>
-"""
-
-
-# --------------------------------------------------------------------------
-# Prancha A3 (1:100) para PDF
-# --------------------------------------------------------------------------
-def prancha_html(S, q):
-    def svg_mm(key, d_kw):
-        sa, T = d_kw
-        w_mm = T.W / S * 10.0     # 1:100 -> 1 m = 10 mm
-        h_mm = T.H / S * 10.0
-        sa = sa.replace(f'width="{T.W:.0f}" height="{T.H:.0f}"', f'width="{w_mm:.2f}mm" height="{h_mm:.2f}mm"', 1)
-        return sa
-
-    blocks = {}
-    for key, d in DRAWINGS.items():
-        kw = {"xrange": XR} if key != "fachada-frontal" else {"extra": (0, 0, 4.3, 0)}
-        blocks[key] = svg_mm(key, to_svg(d, s=S, uid="p" + key, standalone=True, **kw))
-
-    areas_rows = "".join(f"<tr><td>{_e(n)}</td><td class='n'>{fmt(v)}</td></tr>" for n, v in q["terreo"] + q["superior"])
-    esq_rows = "".join(f"<tr><td>{c}</td><td>{_e(t.split(' (')[0])}</td><td class='n'>{d}</td><td class='n'>{pt}</td>"
-                       f"<td class='n'>{n}</td></tr>" for c, t, d, pt, n in ESQUADRIAS)
-    return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<link rel="stylesheet" href="{FONTS}">
-<style>
-@page{{size:420mm 297mm;margin:0}}
-*{{box-sizing:border-box}}
-body{{margin:0;font-family:'Source Sans 3',Arial,sans-serif;color:#1b1f23;background:#fff}}
-.sheet{{width:420mm;height:297mm;padding:9mm 10mm;position:relative;display:grid;
-  grid-template-columns:257mm 1fr;gap:0 7mm;border:0}}
-.frame{{position:absolute;inset:6mm;border:.5mm solid #1b1f23;pointer-events:none}}
-.col{{display:flex;flex-direction:column;gap:1.2mm;min-width:0}}
-h4{{font-family:'Barlow Condensed',Arial Narrow,sans-serif;font-size:10pt;letter-spacing:.06em;margin:1.2mm 0 0;
-  text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline}}
-h4 span{{font-family:'IBM Plex Mono',monospace;font-size:6.5pt;font-weight:400;letter-spacing:0;text-transform:none;color:#4a535b}}
-svg{{display:block}}
-table{{border-collapse:collapse;width:100%;font-size:6.6pt;line-height:1.25}}
-td,th{{padding:.45mm 1mm;border-bottom:.15mm solid #c6ccc8;text-align:left}}
-th{{font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:5.6pt;text-transform:uppercase;color:#4a535b}}
-.n{{text-align:right;font-family:'IBM Plex Mono',monospace;white-space:nowrap}}
-.tot td{{font-weight:700;border-top:.3mm solid #1b1f23;border-bottom:.3mm solid #1b1f23}}
-.carimbo{{margin-top:auto;border:.35mm solid #1b1f23;display:grid;grid-template-columns:1fr 1fr;font-size:6.6pt}}
-.carimbo div{{padding:1mm 1.6mm;border-bottom:.15mm solid #9aa1a8;border-right:.15mm solid #9aa1a8}}
-.carimbo div:nth-child(2n){{border-right:0}}
-.carimbo .full{{grid-column:1/-1;border-right:0}}
-.carimbo b{{display:block;font-family:'Barlow Condensed',Arial Narrow,sans-serif;font-size:10pt}}
-.carimbo .t b{{font-size:15pt;letter-spacing:.02em}}
-.carimbo small{{font-family:'IBM Plex Mono',monospace;font-size:5.4pt;text-transform:uppercase;color:#4a535b}}
-.obs{{font-size:5.8pt;color:#4a535b;line-height:1.3}}
-</style></head><body><div class="sheet"><div class="frame"></div>
-<div class="col">
-  <h4>Planta do térreo <span>esc. 1:100</span></h4>{blocks['planta-terreo']}
-  <h4>Planta do pavimento superior <span>esc. 1:100</span></h4>{blocks['planta-superior']}
-  <h4>Corte AA <span>esc. 1:100</span></h4>{blocks['corte-aa']}
-</div>
-<div class="col">
-  <h4>Fachada frontal <span>esc. 1:100</span></h4>{blocks['fachada-frontal']}
-  <h4>Quadro de áreas (m²)</h4>
-  <table>{areas_rows}
-    <tr><td>Quintal descoberto</td><td class='n'>{fmt(q['quintal'])}</td></tr>
-    <tr class="tot"><td>Área construída total (térreo {fmt(q['terreo_constr'])} + superior {fmt(q['sup_constr'])})</td><td class='n'>{fmt(q['total'])}</td></tr>
-    <tr><td>Taxa de ocupação · Coef. aproveitamento · Permeável</td><td class='n'>{fmt(q['to']*100,1)}% · {fmt(q['ca'])} · {fmt(q['perm']*100,1)}%</td></tr>
-  </table>
-  <h4>Quadro de esquadrias</h4>
-  <table><tr><th>Cód.</th><th>Tipo</th><th class="n">L × H</th><th class="n">Peit.</th><th class="n">Qtd</th></tr>{esq_rows}</table>
-  <p class="obs">Escada: 16 espelhos de 18 cm, pisos de 28 cm, largura 0,90 m, guarda-corpo h = 1,10 m. Pé-direito 2,70 m.
-  Paredes laterais cegas (Código Civil, art. 1.301). Banheiros do superior com exaustão mecânica até a cobertura.
-  Verificar recuos e índices no código de obras e no zoneamento do município.</p>
-  <div class="carimbo">
-    <div class="full t"><small>Projeto</small><b>Sobrado 4×20 — anteprojeto</b></div>
-    <div><small>Lote</small><b>4,00 × 20,00 m ({fmt(q['lote'])} m²)</b></div>
-    <div><small>Área construída</small><b>{fmt(q['total'])} m²</b></div>
-    <div><small>Escala</small><b>1:100 (A3)</b></div>
-    <div><small>Data</small><b>nov/2026</b></div>
-    <div class="full"><small>Observação</small><b style="font-size:7.5pt;font-family:'Source Sans 3',Arial,sans-serif;font-weight:400">
-    Estudo preliminar. Não substitui o projeto legal assinado por responsável técnico (RRT/ART).</b></div>
-  </div>
-</div>
-</div></body></html>"""
 
 
 PDF_JS = r"""
@@ -1585,57 +1245,349 @@ def gerar_pdf(html_path, pdf_path):
         return False
 
 
+
+
+# --------------------------------------------------------------------------
+# Quadro de áreas e índices
+# --------------------------------------------------------------------------
+def quadro():
+    a = areas()
+    lote = LOTE_W * LOTE_L
+    casa = LOTE_W * (LOTE_L - GARAGEM_L)          # 58,00 m² (paredes incluídas)
+    garagem = LOTE_W * GARAGEM_L                  # 22,00 m² com pergolado
+    util = sum(v for k, v in a.items() if k != "GARAGEM")
+    linhas = [("Sala + cozinha integradas", a["SALA + COZINHA"]), ("Lavabo + lavanderia", a["LAVABO + LAVANDERIA"]),
+              ("Circulação", a["CIRCULAÇÃO"]), ("Suíte 1 (quarto)", a["SUÍTE 1"]), ("Banho suíte 1", a["BANHO 1"]),
+              ("Suíte 2 (quarto)", a["SUÍTE 2"]), ("Banho suíte 2", a["BANHO 2"])]
+    return dict(linhas=linhas, garagem_util=a["GARAGEM"], util=util, casa=casa, garagem=garagem, lote=lote,
+                to=casa / lote, ca=casa / lote, perm=a["GARAGEM"] / lote)
+
+
+# --------------------------------------------------------------------------
+# Textos do memorial (usados na página, na prancha e no README)
+# --------------------------------------------------------------------------
+PROGRAMA = [
+    ("Garagem de 5,50 m ocupando toda a frente",
+     "Garagem de 4,00 × 5,50 m (3,70 m livres entre os muros), com pergolado e piso drenante. Portão basculante "
+     "de 2,70 m e portão social de 0,90 m. O carro fica à direita e a passagem para a porta de entrada, à esquerda."),
+    ("Sala e cozinha conjugadas",
+     "Um ambiente de 17,39 m² com estar, mesa para 4 e cozinha linear de 2,75 m (geladeira, pia e cooktop). "
+     "Janela para a garagem e janela alta no shed sobre a cozinha."),
+    ("Lavabo junto com a lavanderia",
+     "Ambiente único de 3,85 m² logo depois da cozinha, com vaso, lavatório, tanque e máquina de lavar. "
+     "Ventilação por domus no teto."),
+    ("Duas suítes, tudo no térreo",
+     "Suíte 1 com quarto de 7,84 m² e banheiro de 2,86 m². Suíte 2, no fundo, com quarto de 9,81 m² "
+     "e banheiro de 2,97 m². Os dois banheiros ficam lado a lado, entre os quartos."),
+]
+
+PARTIDO = [
+    ("O programa ocupa o lote inteiro",
+     "Depois da garagem sobram 14,50 m de profundidade e 3,70 m livres de largura. Sala, lavabo, duas suítes e "
+     "corredor cabem exatamente nesse espaço: a casa vai até o muro do fundo e não sobra quintal. "
+     "Por isso os cômodos são compactos."),
+    ("Luz e ar pelo telhado (sheds)",
+     "As paredes laterais estão na divisa e não podem ter janelas (Código Civil, art. 1.301), e o fundo encosta "
+     "no vizinho. A sala, a cozinha e os quartos recebem janelas altas em sheds, voltadas para a rua. Essas "
+     "janelas ficam perpendiculares às divisas e a mais de 0,75 m delas, distância que o § 1º do mesmo artigo exige."),
+    ("Um corredor só",
+     "Um corredor de 0,85 m na lateral esquerda liga a sala ao lavabo, à suíte 1 e à suíte 2. "
+     "A suíte do fundo ocupa a largura toda porque o corredor termina na porta dela."),
+    ("Banheiros lado a lado",
+     "Os banheiros das duas suítes ficam lado a lado, cada um abrindo para a sua suíte. Assim eles dividem a "
+     "parede hidráulica e ocupam 2,20 m de comprimento em vez de 2,90 m."),
+    ("Garagem aberta com pergolado",
+     "Sem laje, a garagem funciona como área aberta: ilumina a sala, pode contar como área permeável (com piso "
+     "drenante) e normalmente não entra na taxa de ocupação."),
+]
+
+MEMORIAL = [
+    ("Alturas", "Pé-direito de 2,70 m. Sob os sheds, o forro acompanha a inclinação e sobe até cerca de 3,70 m junto "
+                "à janela. Platibanda a 3,50 m e topo dos sheds a 4,05 m."),
+    ("Estrutura", "Alvenaria estrutural de blocos de 14 cm ou concreto armado com pilares nas divisas. Cobertura em "
+                  "estrutura metálica leve com telha termoacústica. O dimensionamento é do projeto estrutural."),
+    ("Paredes", "Paredes de divisa com 15 cm acabadas e internas com 10 cm."),
+    ("Cobertura", "Trechos planos com 5% de caimento e sheds com cerca de 35%, sempre escoando para longe das "
+                  "janelas. Calhas nos pontos baixos, com descidas embutidas nas paredes de divisa."),
+    ("Janelas dos sheds", "Basculantes de vidro entre 2,95 m e 3,75 m acima do piso, abertas por haste. Se a rua "
+                          "ficar ao norte, use vidro de controle solar ou brise; se ficar ao sul, a luz entra difusa."),
+    ("Banheiros e lavabo", "Domus ventilado no teto e exaustor com duto até a cobertura."),
+    ("Iluminação", "As aberturas da sala e dos quartos somam pelo menos 1/6 da área de piso, a proporção que muitos "
+                   "códigos de obras pedem para ambientes de permanência prolongada."),
+    ("Área permeável", "Garagem com concregrama ou piso intertravado permeável."),
+]
+
+VERIFICAR = [
+    ("Fundo e laterais na divisa", "A casa encosta nas duas laterais e no fundo. Algumas cidades exigem recuo de "
+                                   "fundo ou área livre mínima no lote. Nesse caso, os cômodos precisam encolher ou "
+                                   "volta a fazer sentido o sobrado."),
+    ("Janelas em sheds", "A maioria dos códigos de obras aceita janelas altas voltadas para o céu como iluminação "
+                         "e ventilação. Confirme no código do seu município."),
+    ("Garagem no recuo frontal", "Pergolado no recuo costuma ser permitido. Se a prefeitura deixar cobrir com "
+                                 "policarbonato ou telha, a garagem passa a contar como área coberta."),
+    ("Índices urbanísticos", "Taxa de ocupação de 72,5% e coeficiente de aproveitamento de 0,725, sem contar a garagem. "
+                             "A permeabilidade depende de a prefeitura aceitar o piso drenante da garagem (até 25,4%)."),
+    ("Aprovação", "Este é um anteprojeto. Para construir, é preciso o projeto legal assinado por arquiteto ou "
+                  "engenheiro (RRT/ART), além dos projetos estrutural, elétrico e hidrossanitário."),
+]
+
+ESQUADRIAS = [
+    ("P1", "Porta de entrada, de giro", "0,90 × 2,10", "—", 1),
+    ("P2", "Porta de giro (lavabo + lavanderia)", "0,70 × 2,10", "—", 1),
+    ("P3", "Porta de giro (suítes)", "0,80 × 2,10", "—", 2),
+    ("P4", "Porta de giro (banheiros)", "0,60 × 2,10", "—", 2),
+    ("J1", "Janela de correr (sala → garagem)", "1,50 × 1,20", "1,00", 1),
+    ("JS1", "Janela alta basculante no shed 1 (sala e cozinha)", "2,50 × 0,80", "2,95", 1),
+    ("JS2", "Janela alta basculante no shed 2 (suíte 1)", "2,00 × 0,80", "2,95", 1),
+    ("JS3", "Janela alta basculante no shed 3 (suíte 2)", "2,50 × 0,80", "2,95", 1),
+    ("D1", "Domus ventilado (lavabo + lavanderia)", "0,80 × 0,80", "teto", 1),
+    ("D2", "Domus ventilado (banheiros e corredor)", "0,60 × 0,60", "teto", 4),
+    ("PG", "Portão basculante ripado", "2,70 × 2,20", "—", 1),
+    ("PS", "Portão social ripado", "0,90 × 2,20", "—", 1),
+]
+
+
+# --------------------------------------------------------------------------
+# Página HTML (artifact)
+# --------------------------------------------------------------------------
+def tabela_areas(q):
+    rows = ['<tr class="grp"><td colspan="2">Casa</td></tr>']
+    rows += [f'<tr><td>{_e(n)}</td><td class="n">{fmt(v)}</td></tr>' for n, v in q["linhas"]]
+    rows.append(f'<tr class="sum"><td>Área útil da casa</td><td class="n">{fmt(q["util"])}</td></tr>')
+    rows.append('<tr class="grp"><td colspan="2">Área construída</td></tr>')
+    rows.append(f'<tr class="total"><td>Casa (4,00 × 14,50, com paredes)</td><td class="n">{fmt(q["casa"])} m²</td></tr>')
+    rows.append(f'<tr><td>Garagem com pergolado (área aberta)</td><td class="n">{fmt(q["garagem_util"])}</td></tr>')
+    return ('<table><thead><tr><th>Ambiente</th><th class="n">m²</th></tr></thead><tbody>'
+            + "".join(rows) + "</tbody></table>")
+
+
+def tabela_esquadrias():
+    rows = "".join(f'<tr><td class="mono">{c}</td><td>{_e(t)}</td><td class="n">{d}</td>'
+                   f'<td class="n">{pt}</td><td class="n">{n}</td></tr>' for c, t, d, pt, n in ESQUADRIAS)
+    return ('<table><thead><tr><th>Cód.</th><th>Tipo</th><th class="n">L × H (m)</th>'
+            '<th class="n">Peitoril</th><th class="n">Qtd.</th></tr></thead><tbody>' + rows + "</tbody></table>")
+
+
+def pagina_html(svgs, q):
+    def fig(key, titulo, nota, small=False):
+        svg = svgs[key][0]
+        if small:
+            svg = svg.replace('class="dwg"', 'class="dwg small"', 1)
+        return (f'<figure><figcaption><h3>{titulo}</h3><span>{nota}</span></figcaption>'
+                f'<div class="scroll" tabindex="0" aria-label="{titulo}">{svg}</div>'
+                f'<p class="hint">Arraste para o lado para ver o desenho inteiro →</p></figure>')
+
+    def itens(lst):
+        return "".join(f'<div class="item"><h3>{_e(t)}</h3><p>{_e(x)}</p></div>' for t, x in lst)
+
+    programa = "".join(f'<li><span class="ok">✓ atendido</span><h3>{_e(t)}</h3><p>{_e(x)}</p></li>' for t, x in PROGRAMA)
+    return f"""<title>Casa Térrea 4×20</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{FONTS}">
+<style>{PAGE_CSS}</style>
+<div class="wrap">
+  <header class="head">
+    <div class="intro">
+      <span class="eyebrow">Anteprojeto residencial · lote 4 × 20 m · um pavimento</span>
+      <h1>Casa Térrea 4×20</h1>
+      <p class="lede">Casa térrea com duas suítes, sala e cozinha integradas, lavabo junto com a lavanderia e
+      garagem de 5,50 m ocupando toda a frente do lote. Luz e ventilação entram por sheds no telhado.</p>
+    </div>
+    <dl class="carimbo">
+      <div><dt>Lote</dt><dd>4,00 × 20,00 m</dd></div>
+      <div><dt>Área do lote</dt><dd>{fmt(q['lote'])} m²</dd></div>
+      <div><dt>Área construída</dt><dd>{fmt(q['casa'])} m²</dd></div>
+      <div><dt>Pavimentos</dt><dd>1 (térreo)</dd></div>
+      <div><dt>Quartos</dt><dd>2 suítes</dd></div>
+      <div><dt>Altura máxima</dt><dd>4,05 m</dd></div>
+      <div class="full"><dt>Fase</dt><dd>Estudo preliminar · novembro de 2026</dd></div>
+    </dl>
+  </header>
+
+  <section aria-labelledby="h-prog">
+    <h2 id="h-prog">Programa pedido</h2>
+    <ol class="programa">{programa}</ol>
+  </section>
+
+  <section aria-labelledby="h-des">
+    <h2 id="h-des">Desenhos</h2>
+    <div class="legend">
+      <span><i class="lg-wall"></i>parede cortada</span>
+      <span><i class="lg-glass"></i>vidro, janela alta, domus</span>
+      <span><i class="lg-proj"></i>projeção (pergolado, cobertura)</span>
+      <span><i class="lg-sec"></i>linha de corte AA</span>
+      <span><i class="lg-sun"></i>luz pelos sheds</span>
+    </div>
+    <div class="set">
+      {fig("planta-baixa", "Planta baixa", "rua à esquerda · cotas em metros")}
+      {fig("planta-cobertura", "Planta de cobertura", "sheds, domus e calhas")}
+      {fig("corte-aa", "Corte AA", "longitudinal, pela faixa dos quartos")}
+    </div>
+  </section>
+
+  <section class="duo" aria-label="Fachada e quadro de áreas">
+    {fig("fachada-frontal", "Fachada frontal", "vista da rua", small=True)}
+    <div class="tablebox">
+      <h3 style="padding:10px 0 4px;text-transform:uppercase;letter-spacing:.05em">Quadro de áreas</h3>
+      {tabela_areas(q)}
+      <div class="indices">
+        <div><b>{fmt(q['to'] * 100, 1)}%</b><small>taxa de ocupação</small></div>
+        <div><b>{fmt(q['ca'], 3)}</b><small>coef. de aproveitamento</small></div>
+        <div><b>até {fmt(q['perm'] * 100, 1)}%</b><small>área permeável</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-part">
+    <h2 id="h-part">Como a casa foi resolvida</h2>
+    <div class="cols">{itens(PARTIDO)}</div>
+  </section>
+
+  <section aria-labelledby="h-esq">
+    <h2 id="h-esq">Quadro de esquadrias</h2>
+    <div class="tablebox"><div class="scroll">{tabela_esquadrias()}</div></div>
+  </section>
+
+  <section aria-labelledby="h-mem">
+    <h2 id="h-mem">Memorial resumido</h2>
+    <div class="cols">{itens(MEMORIAL)}</div>
+  </section>
+
+  <section class="aviso" aria-labelledby="h-ver">
+    <h2 id="h-ver">Antes de construir, verifique</h2>
+    <div class="cols">{itens(VERIFICAR)}</div>
+  </section>
+
+  <footer class="files">
+    <h3>Arquivos no repositório</h3>
+    <p><code>projeto/prancha-a3.pdf</code> prancha única em A3, escala 1:100, para imprimir e levar ao arquiteto ou engenheiro.</p>
+    <p><code>projeto/casa-terrea-4x20.dxf</code> planta, cobertura, corte e fachada para AutoCAD, em metros e separados por camadas.</p>
+    <p><code>gerar_projeto.py</code> modelo paramétrico que gera todos os desenhos e o quadro de áreas.</p>
+  </footer>
+</div>
+"""
+
+
+# --------------------------------------------------------------------------
+# Prancha A3 (1:100) para PDF
+# --------------------------------------------------------------------------
+def prancha_html(S, q):
+    blocks = {}
+    for key, d in DRAWINGS.items():
+        kw = {"xrange": XR} if key != "fachada-frontal" else {"extra": (0, 0, 4.3, 0)}
+        sa, T = to_svg(d, s=S, uid="p" + key, standalone=True, **kw)
+        w_mm, h_mm = T.W / S * 10.0, T.H / S * 10.0        # 1:100 -> 1 m = 10 mm
+        blocks[key] = sa.replace(f'width="{T.W:.0f}" height="{T.H:.0f}"',
+                                 f'width="{w_mm:.2f}mm" height="{h_mm:.2f}mm"', 1)
+
+    areas_rows = "".join(f"<tr><td>{_e(n)}</td><td class='n'>{fmt(v)}</td></tr>" for n, v in q["linhas"])
+    esq_rows = "".join(f"<tr><td>{c}</td><td>{_e(t.split(' (')[0])}</td><td class='n'>{d}</td><td class='n'>{pt}</td>"
+                       f"<td class='n'>{n}</td></tr>" for c, t, d, pt, n in ESQUADRIAS)
+    return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<link rel="stylesheet" href="{FONTS}">
+<style>
+@page{{size:420mm 297mm;margin:0}}
+*{{box-sizing:border-box}}
+body{{margin:0;font-family:'Source Sans 3',Arial,sans-serif;color:#1b1f23;background:#fff}}
+.sheet{{width:420mm;height:297mm;padding:9mm 10mm;position:relative;display:grid;grid-template-columns:257mm 1fr;gap:0 7mm}}
+.frame{{position:absolute;inset:6mm;border:.5mm solid #1b1f23;pointer-events:none}}
+.col{{display:flex;flex-direction:column;gap:1.2mm;min-width:0}}
+h4{{font-family:'Barlow Condensed',Arial Narrow,sans-serif;font-size:10pt;letter-spacing:.06em;margin:1.6mm 0 0;
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline}}
+h4 span{{font-family:'IBM Plex Mono',monospace;font-size:6.5pt;font-weight:400;letter-spacing:0;text-transform:none;color:#4a535b}}
+svg{{display:block}}
+table{{border-collapse:collapse;width:100%;font-size:6.6pt;line-height:1.25}}
+td,th{{padding:.45mm 1mm;border-bottom:.15mm solid #c6ccc8;text-align:left}}
+th{{font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:5.6pt;text-transform:uppercase;color:#4a535b}}
+.n{{text-align:right;font-family:'IBM Plex Mono',monospace;white-space:nowrap}}
+.tot td{{font-weight:700;border-top:.3mm solid #1b1f23;border-bottom:.3mm solid #1b1f23}}
+.carimbo{{margin-top:auto;border:.35mm solid #1b1f23;display:grid;grid-template-columns:1fr 1fr;font-size:6.6pt}}
+.carimbo div{{padding:1mm 1.6mm;border-bottom:.15mm solid #9aa1a8;border-right:.15mm solid #9aa1a8}}
+.carimbo div:nth-child(2n){{border-right:0}}
+.carimbo .full{{grid-column:1/-1;border-right:0}}
+.carimbo b{{display:block;font-family:'Barlow Condensed',Arial Narrow,sans-serif;font-size:10pt}}
+.carimbo .t b{{font-size:15pt;letter-spacing:.02em}}
+.carimbo small{{font-family:'IBM Plex Mono',monospace;font-size:5.4pt;text-transform:uppercase;color:#4a535b}}
+.obs{{font-size:5.8pt;color:#4a535b;line-height:1.3}}
+</style></head><body><div class="sheet"><div class="frame"></div>
+<div class="col">
+  <h4>Planta baixa <span>esc. 1:100</span></h4>{blocks['planta-baixa']}
+  <h4>Planta de cobertura <span>esc. 1:100</span></h4>{blocks['planta-cobertura']}
+  <h4>Corte AA <span>esc. 1:100</span></h4>{blocks['corte-aa']}
+</div>
+<div class="col">
+  <h4>Fachada frontal <span>esc. 1:100</span></h4>{blocks['fachada-frontal']}
+  <h4>Quadro de áreas (m²)</h4>
+  <table>{areas_rows}
+    <tr><td>Área útil da casa</td><td class='n'>{fmt(q['util'])}</td></tr>
+    <tr><td>Garagem com pergolado (área aberta)</td><td class='n'>{fmt(q['garagem_util'])}</td></tr>
+    <tr class="tot"><td>Área construída (casa, 4,00 × 14,50)</td><td class='n'>{fmt(q['casa'])}</td></tr>
+    <tr><td>Taxa de ocupação · Coef. aproveitamento · Permeável</td><td class='n'>{fmt(q['to']*100,1)}% · {fmt(q['ca'], 3)} · {fmt(q['perm']*100,1)}%</td></tr>
+  </table>
+  <h4>Quadro de esquadrias</h4>
+  <table><tr><th>Cód.</th><th>Tipo</th><th class="n">L × H</th><th class="n">Peit.</th><th class="n">Qtd</th></tr>{esq_rows}</table>
+  <p class="obs">Pé-direito 2,70 m; forro inclinado sob os sheds. Paredes laterais e de fundo cegas (Código Civil, art. 1.301);
+  janelas dos sheds perpendiculares às divisas e a mais de 0,75 m delas. Banheiros e lavabo com domus ventilado e exaustor.
+  Verificar recuos, índices e aceitação dos sheds no código de obras do município.</p>
+  <div class="carimbo">
+    <div class="full t"><small>Projeto</small><b>Casa Térrea 4×20 — anteprojeto</b></div>
+    <div><small>Lote</small><b>4,00 × 20,00 m ({fmt(q['lote'])} m²)</b></div>
+    <div><small>Área construída</small><b>{fmt(q['casa'])} m²</b></div>
+    <div><small>Escala</small><b>1:100 (A3)</b></div>
+    <div><small>Data</small><b>nov/2026</b></div>
+    <div class="full"><small>Observação</small><b style="font-size:7.5pt;font-family:'Source Sans 3',Arial,sans-serif;font-weight:400">
+    Estudo preliminar. Não substitui o projeto legal assinado por responsável técnico (RRT/ART).</b></div>
+  </div>
+</div>
+</div></body></html>"""
+
+
 # --------------------------------------------------------------------------
 # README
 # --------------------------------------------------------------------------
+CADEIA = [("Garagem", 0.00, 5.50), ("Sala + cozinha", 5.65, 10.35), ("Lavabo + lavanderia", 10.45, 11.85),
+          ("Suíte 1 (quarto)", 11.95, 14.80), ("Banheiros lado a lado", 14.90, 17.10), ("Suíte 2 (quarto)", 17.20, 19.85)]
+
+
 def readme_md(q):
-    linhas = ["# Sobrado 4×20 — anteprojeto", "",
-              "Casa de dois pavimentos para um lote de **4,00 × 20,00 m**: duas suítes, sala e cozinha integradas, "
-              "lavabo junto com a lavanderia e garagem coberta de **5,50 m** ocupando toda a frente do terreno.", "",
-              f"**Área construída:** {fmt(q['total'])} m² · **Lote:** {fmt(q['lote'])} m² · "
-              f"**Taxa de ocupação:** {fmt(q['to'] * 100, 1)}% · **Coef. de aproveitamento:** {fmt(q['ca'])} · "
-              f"**Área permeável:** até {fmt(q['perm'] * 100, 1)}%", "",
-              "## Programa pedido", ""]
-    for t, x in PROGRAMA:
-        linhas.append(f"- **{t}** — {x}")
-    linhas += ["", "## Desenhos", "",
-               "As plantas estão com a rua à esquerda; plantas e corte usam a mesma escala e o mesmo eixo de "
-               "profundidade, então podem ser lidos alinhados.", "",
-               "### Planta do térreo", "", "![Planta do térreo](projeto/planta-terreo.svg)", "",
-               "### Planta do pavimento superior", "", "![Planta do pavimento superior](projeto/planta-superior.svg)", "",
-               "### Corte AA", "", "![Corte AA](projeto/corte-aa.svg)", "",
-               "### Fachada frontal", "", "![Fachada frontal](projeto/fachada-frontal.svg)", "",
-               "## Quadro de áreas", "", "| Ambiente | m² |", "|---|---:|"]
-    for n, v in q["terreo"]:
-        linhas.append(f"| Térreo — {n} | {fmt(v)} |")
-    for n, v in q["superior"]:
-        linhas.append(f"| Superior — {n} | {fmt(v)} |")
-    linhas += [f"| Quintal descoberto | {fmt(q['quintal'])} |",
-               f"| Área útil (térreo + superior) | {fmt(q['util_t'] + q['util_s'])} |",
-               f"| **Área construída** (térreo {fmt(q['terreo_constr'])} + superior {fmt(q['sup_constr'])}) | **{fmt(q['total'])}** |",
-               "", "## Como a casa foi resolvida", ""]
-    for t, x in PARTIDO:
-        linhas.append(f"- **{t}.** {x}")
-    linhas += ["", "## Quadro de esquadrias", "", "| Cód. | Tipo | L × H (m) | Peitoril | Qtd. |", "|---|---|---:|---:|---:|"]
-    for c, t, d, pt, n in ESQUADRIAS:
-        linhas.append(f"| {c} | {t} | {d} | {pt} | {n} |")
-    linhas += ["", "## Memorial resumido", ""]
-    for t, x in MEMORIAL:
-        linhas.append(f"- **{t}.** {x}")
-    linhas += ["", "## Antes de construir, verifique", ""]
-    for t, x in VERIFICAR:
-        linhas.append(f"- **{t}.** {x}")
-    linhas += ["", "## Arquivos", "",
-               "| Arquivo | Conteúdo |", "|---|---|",
-               "| `projeto/prancha-a3.pdf` | Prancha única A3 em escala 1:100 (plantas, corte, fachada, quadros) |",
-               "| `projeto/sobrado-4x20.dxf` | Desenhos para CAD, em metros, separados por camadas |",
-               "| `projeto/*.svg` | Desenhos em vetor |",
-               "| `projeto/index.html` | Página de apresentação (tema claro e escuro) |",
-               "| `gerar_projeto.py` | Modelo paramétrico que gera todos os arquivos acima |",
-               "", "Para alterar o projeto, edite as coordenadas em `gerar_projeto.py` e rode:", "",
-               "```bash", "pip install shapely ezdxf", "python3 gerar_projeto.py   # o PDF usa node + playwright, se houver",
-               "```", ""]
-    return "\n".join(linhas)
+    L = ["# Casa Térrea 4×20 — anteprojeto", "",
+         "Casa de **um pavimento** para um lote de **4,00 × 20,00 m**: duas suítes, sala e cozinha integradas, "
+         "lavabo junto com a lavanderia e garagem de **5,50 m** ocupando toda a frente do terreno.", "",
+         f"**Área construída:** {fmt(q['casa'])} m² (+ garagem com pergolado) · **Área útil:** {fmt(q['util'])} m² · "
+         f"**Taxa de ocupação:** {fmt(q['to'] * 100, 1)}% · **Permeável:** até {fmt(q['perm'] * 100, 1)}%", "",
+         "## Programa pedido", ""]
+    L += [f"- **{t}** — {x}" for t, x in PROGRAMA]
+    L += ["", "## Como os 20 m foram distribuídos", "", "| Trecho | de (m) | até (m) | comprimento |", "|---|---:|---:|---:|"]
+    L += [f"| {n} | {fmt(a)} | {fmt(b)} | {fmt(b - a)} |" for n, a, b in CADEIA]
+    L += ["", "Entre os trechos há paredes de 10 a 15 cm; a parede do fundo termina exatamente em 20,00 m.", "",
+          "## Desenhos", "", "As plantas estão com a rua à esquerda; plantas e corte usam a mesma escala e o mesmo eixo.", "",
+          "### Planta baixa", "", "![Planta baixa](projeto/planta-baixa.svg)", "",
+          "### Planta de cobertura", "", "![Planta de cobertura](projeto/planta-cobertura.svg)", "",
+          "### Corte AA", "", "![Corte AA](projeto/corte-aa.svg)", "",
+          "### Fachada frontal", "", "![Fachada frontal](projeto/fachada-frontal.svg)", "",
+          "## Quadro de áreas", "", "| Ambiente | m² |", "|---|---:|"]
+    L += [f"| {n} | {fmt(v)} |" for n, v in q["linhas"]]
+    L += [f"| **Área útil da casa** | **{fmt(q['util'])}** |",
+          f"| Garagem com pergolado (área aberta) | {fmt(q['garagem_util'])} |",
+          f"| **Área construída** (casa 4,00 × 14,50) | **{fmt(q['casa'])}** |", "",
+          "## Como a casa foi resolvida", ""]
+    L += [f"- **{t}.** {x}" for t, x in PARTIDO]
+    L += ["", "## Quadro de esquadrias", "", "| Cód. | Tipo | L × H (m) | Peitoril | Qtd. |", "|---|---|---:|---:|---:|"]
+    L += [f"| {c} | {t} | {d} | {pt} | {n} |" for c, t, d, pt, n in ESQUADRIAS]
+    L += ["", "## Memorial resumido", ""] + [f"- **{t}.** {x}" for t, x in MEMORIAL]
+    L += ["", "## Antes de construir, verifique", ""] + [f"- **{t}.** {x}" for t, x in VERIFICAR]
+    L += ["", "## Arquivos", "", "| Arquivo | Conteúdo |", "|---|---|",
+          "| `projeto/prancha-a3.pdf` | Prancha única A3 em escala 1:100 (planta, cobertura, corte, fachada, quadros) |",
+          "| `projeto/casa-terrea-4x20.dxf` | Desenhos para CAD, em metros, separados por camadas |",
+          "| `projeto/*.svg` | Desenhos em vetor |",
+          "| `projeto/index.html` | Página de apresentação (tema claro e escuro) |",
+          "| `gerar_projeto.py` | Modelo paramétrico que gera todos os arquivos acima |",
+          "", "A primeira versão (sobrado de dois pavimentos) está no histórico do git, no commit `9a2be4c`.", "",
+          "Para alterar o projeto, edite as coordenadas em `gerar_projeto.py` e rode:", "",
+          "```bash", "pip install shapely ezdxf", "python3 gerar_projeto.py   # o PDF usa node + playwright, se houver", "```", ""]
+    return "\n".join(L)
 
 
 DRAWINGS = {}
@@ -1645,7 +1597,7 @@ XR = (-2.75, 22.75)
 def main():
     global DRAWINGS
     os.makedirs(OUT, exist_ok=True)
-    DRAWINGS = {"planta-terreo": planta_terreo(), "planta-superior": planta_superior(),
+    DRAWINGS = {"planta-baixa": planta_baixa(), "planta-cobertura": planta_cobertura(),
                 "corte-aa": corte_aa(), "fachada-frontal": fachada()}
     S = 56
     svgs = {}
@@ -1656,11 +1608,11 @@ def main():
             f.write(sa)
         svgs[key] = to_svg(d, s=S, uid=key, standalone=False, **kw)
 
-    to_dxf([(DRAWINGS["planta-terreo"], (0, 0), "PLANTA DO TÉRREO"),
-            (DRAWINGS["planta-superior"], (0, -9), "PLANTA DO PAVIMENTO SUPERIOR"),
-            (DRAWINGS["corte-aa"], (0, -26), "CORTE AA"),
-            (DRAWINGS["fachada-frontal"], (27, -26), "FACHADA FRONTAL")],
-           os.path.join(OUT, "sobrado-4x20.dxf"))
+    to_dxf([(DRAWINGS["planta-baixa"], (0, 0), "PLANTA BAIXA"),
+            (DRAWINGS["planta-cobertura"], (0, -9), "PLANTA DE COBERTURA"),
+            (DRAWINGS["corte-aa"], (0, -20), "CORTE AA"),
+            (DRAWINGS["fachada-frontal"], (27, -20), "FACHADA FRONTAL")],
+           os.path.join(OUT, "casa-terrea-4x20.dxf"))
 
     q = quadro()
     with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as f:
@@ -1671,9 +1623,8 @@ def main():
     ok = gerar_pdf(prancha, os.path.join(OUT, "prancha-a3.pdf"))
     with open(os.path.join(RAIZ, "README.md"), "w", encoding="utf-8") as f:
         f.write(readme_md(q))
-
-    print(f"Área construída: {fmt(q['total'])} m² | útil: {fmt(q['util_t'] + q['util_s'])} m² | "
-          f"TO {fmt(q['to'] * 100, 1)}% | CA {fmt(q['ca'])} | permeável até {fmt(q['perm'] * 100, 1)}%")
+    print(f"Área construída: {fmt(q['casa'])} m² | útil: {fmt(q['util'])} m² | TO {fmt(q['to'] * 100, 1)}% | "
+          f"permeável até {fmt(q['perm'] * 100, 1)}%")
     print("Arquivos em", OUT, "(PDF ok)" if ok else "(sem PDF)")
 
 
