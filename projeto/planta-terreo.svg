@@ -1,0 +1,252 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1428 354" width="1428" height="354"><style>
+  .bg{fill:#ffffff}
+  text{font-family:'Barlow Condensed','Arial Narrow','Helvetica Neue',Arial,sans-serif}
+  .wall,.cut{fill:#22262b;stroke:#22262b;stroke-width:.5}
+  .muro{fill:#9aa1a8;stroke:#5f666d;stroke-width:.5}
+  .facade{fill:#e9e6df;stroke:#22262b;stroke-width:1}
+  .floor-garage{fill:#eef0f1}
+  .floor-wet{fill:#e6eef3}
+  .wet{fill:#d8e6ee;stroke:#7d8a94;stroke-width:.6}
+  .garden{fill:#e4efdc}
+  .sidewalk{fill:#eceae5}
+  .void{fill:#f4f5f6;stroke:none}
+  .ghost{fill:none;stroke:#b8bec4;stroke-width:.7;stroke-dasharray:4 3}
+  .terrain{fill:url(#HATCH);stroke:none}
+  .furn,.car,.rug,.paver{fill:none;stroke:#8b939b;stroke-width:.8}
+  .rug{stroke-dasharray:2 2}
+  .furnlight{fill:none;stroke:#b2b8be;stroke-width:.6}
+  .plant{fill:#cfe3c4;stroke:#7fa070;stroke-width:.8}
+  .door{fill:none;stroke:#22262b;stroke-width:1.2}
+  .swing{fill:none;stroke:#22262b;stroke-width:.6}
+  .win{fill:none;stroke:#22262b;stroke-width:.7}
+  .glass{fill:none;stroke:#2f6db3;stroke-width:.7}
+  .glassline{fill:none;stroke:#2f6db3;stroke-width:.9}
+  .glassfill{fill:#2f6db3;stroke:#2f6db3;stroke-width:.4}
+  .leaf{fill:#ffffff;stroke:#22262b;stroke-width:.8}
+  .thin{fill:none;stroke:#22262b;stroke-width:.7}
+  .hidden{fill:none;stroke:#59616a;stroke-width:.6;stroke-dasharray:4 3}
+  .hiddenrect{fill:none;stroke:#8b939b;stroke-width:.6;stroke-dasharray:4 3}
+  .arrow{fill:#22262b;stroke:none}
+  .rail{fill:none;stroke:#22262b;stroke-width:1.4}
+  .rail2{fill:#ffffff;stroke:#22262b;stroke-width:.7}
+  .skylight{fill:none;stroke:#2f6db3;stroke-width:.9;stroke-dasharray:7 3 1.5 3}
+  .dim,.dimext{fill:none;stroke:#5c636b;stroke-width:.55}
+  .dimtick{fill:none;stroke:#22262b;stroke-width:1.1}
+  .dimtext{fill:#3b4249;font-family:'IBM Plex Mono',Menlo,Consolas,monospace}
+  .label{fill:#15181b;font-weight:600;letter-spacing:.04em}
+  .sublabel{fill:#4f575f}
+  .small,.tiny,.tiny2{fill:#59616a}
+  .code{fill:#2f6db3;font-family:'IBM Plex Mono',Menlo,Consolas,monospace;font-weight:600}
+  .accenttext{fill:#2f6db3;font-weight:600;letter-spacing:.04em}
+  .secline{fill:none;stroke:#c2410c;stroke-width:2}
+  .secarrow{fill:#c2410c;stroke:none}
+  .secbubble{fill:#ffffff;stroke:#c2410c;stroke-width:1.2}
+  .secletter{fill:#c2410c;font-weight:700}
+  .ground{fill:none;stroke:#22262b;stroke-width:1.6}
+  .roof{fill:#7b838b;stroke:#22262b;stroke-width:.5}
+  .elev{fill:none;stroke:#5c636b;stroke-width:.8}
+  .elevlight{fill:none;stroke:#9aa1a8;stroke-width:.6}
+  .light{fill:none;stroke:#e0a400;stroke-width:1;stroke-dasharray:6 4}
+  .levelmark{fill:#22262b;stroke:none}
+  .shadow{fill:#3a3f45}
+  .recess{fill:#d7d3cb}
+  .wood{fill:#b9855a}
+  .slat{stroke:#7e5532;stroke-width:1.2}
+  .glasspane{fill:#a9c4dc}
+  .frame{fill:none;stroke:#22262b;stroke-width:.9}
+  .glassrail{fill:#cfe0ee;fill-opacity:.55;stroke:#22262b;stroke-width:.6}
+  .reflect{stroke:#ffffff;stroke-width:1.4;stroke-opacity:.9}
+  .plantelev{fill:#8fb37c;stroke:#5f8a4f;stroke-width:.6}
+  .gate{fill:#4a5057}
+  .slat2{stroke:#2a2e33;stroke-width:1.6}
+  .leader{fill:none;stroke:#5c636b;stroke-width:.6}
+  .leaderdot{fill:#22262b}
+  .note{fill:#2b3137}
+  .barfill{fill:#22262b;stroke:#22262b;stroke-width:.6}
+  .barempty{fill:#ffffff;stroke:#22262b;stroke-width:.6}
+.hatchbg{fill:#f1efe9}.hatchline{stroke:#b9b2a5;stroke-width:1}</style><defs><pattern id="hatch-planta-terreo" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" class="hatchbg"/><line x1="0" y1="0" x2="0" y2="7" class="hatchline"/></pattern></defs><rect class="bg" x="0" y="0" width="1428" height="354"/><path class="floor-garage" fill-rule="evenodd" d="M154.0,268.8 L462.0,268.8 L462.0,61.6 L154.0,61.6 L154.0,268.8 Z"/>
+<path class="garden" fill-rule="evenodd" d="M977.2,268.8 L1265.6,268.8 L1265.6,61.6 L977.2,61.6 L977.2,268.8 Z"/>
+<path class="floor-wet" fill-rule="evenodd" d="M826.0,156.8 L968.8,156.8 L968.8,61.6 L826.0,61.6 L826.0,156.8 Z"/>
+<path class="sidewalk" fill-rule="evenodd" d="M70.0,310.8 L154.0,310.8 L154.0,19.6 L70.0,19.6 L70.0,310.8 Z"/>
+<polygon class="hiddenrect" points="627.2,62.7 627.2,110.9 704.5,110.9 704.5,62.7"/>
+<polygon class="car" points="176.4,160.7 177.0,165.1 178.7,169.1 181.3,172.6 184.8,175.3 188.9,176.9 193.2,177.5 411.6,177.5 415.9,176.9 420.0,175.3 423.5,172.6 426.1,169.1 427.8,165.1 428.4,160.7 428.4,93.5 427.8,89.2 426.1,85.1 423.5,81.6 420.0,79.0 415.9,77.3 411.6,76.7 193.2,76.7 188.9,77.3 184.8,79.0 181.3,81.6 178.7,85.1 177.0,89.2 176.4,93.5"/>
+<polygon class="car" points="352.8,84.0 352.8,170.2 324.8,164.1 324.8,90.2"/>
+<polygon class="car" points="212.8,87.9 212.8,166.3 232.4,162.4 232.4,91.8"/>
+<polygon class="furn" points="506.8,116.5 506.8,166.9 618.8,166.9 618.8,116.5"/>
+<polygon class="furn" points="506.8,116.5 506.8,128.8 618.8,128.8 618.8,116.5"/>
+<polygon class="furn" points="506.8,128.8 506.8,166.9 518.0,166.9 518.0,128.8"/>
+<polygon class="furn" points="607.6,128.8 607.6,166.9 618.8,166.9 618.8,128.8"/>
+<polyline class="furn" points="562.8,128.8 562.8,166.9"/>
+<polygon class="furn" points="529.2,246.4 529.2,268.8 596.4,268.8 596.4,246.4"/>
+<polygon class="furn" points="534.8,260.4 534.8,263.8 590.8,263.8 590.8,260.4"/>
+<polygon class="rug" points="520.8,228.5 520.9,229.2 521.2,229.9 521.6,230.5 522.2,230.9 522.9,231.2 523.6,231.3 602.0,231.3 602.7,231.2 603.4,230.9 604.0,230.5 604.4,229.9 604.7,229.2 604.8,228.5 604.8,178.1 604.7,177.4 604.4,176.7 604.0,176.1 603.4,175.7 602.7,175.4 602.0,175.3 523.6,175.3 522.9,175.4 522.2,175.7 521.6,176.1 521.2,176.7 520.9,177.4 520.8,178.1"/>
+<polygon class="furn" points="655.2,229.6 655.2,268.8 697.2,268.8 697.2,229.6"/>
+<polyline class="furnlight" points="655.2,229.6 697.2,268.8"/>
+<polygon class="furn" points="697.2,235.2 697.2,268.8 890.4,268.8 890.4,235.2"/>
+<polygon class="furn" points="730.8,239.1 730.8,266.0 764.4,266.0 764.4,239.1"/>
+<circle class="furn" cx="738.6" cy="245.8" r="4.5"/>
+<circle class="furn" cx="738.6" cy="259.3" r="4.5"/>
+<circle class="furn" cx="756.6" cy="245.8" r="4.5"/>
+<circle class="furn" cx="756.6" cy="259.3" r="4.5"/>
+<polygon class="furn" points="828.8,261.5 828.9,262.4 829.3,263.2 829.8,263.9 830.5,264.4 831.3,264.8 832.2,264.9 864.6,264.9 865.5,264.8 866.3,264.4 867.0,263.9 867.5,263.2 867.9,262.4 868.0,261.5 868.0,243.0 867.9,242.2 867.5,241.4 867.0,240.7 866.3,240.1 865.5,239.8 864.6,239.7 832.2,239.7 831.3,239.8 830.5,240.1 829.8,240.7 829.3,241.4 828.9,242.2 828.8,243.0"/>
+<circle class="furn" cx="848.4" cy="260.4" r="1.7"/>
+<polygon class="furn" points="728.0,95.2 728.0,140.0 795.2,140.0 795.2,95.2"/>
+<polygon class="furn" points="733.0,70.0 733.0,92.4 756.6,92.4 756.6,70.0"/>
+<polygon class="furn" points="733.0,142.8 733.0,165.2 756.6,165.2 756.6,142.8"/>
+<polygon class="furn" points="766.6,70.0 766.6,92.4 790.2,92.4 790.2,70.0"/>
+<polygon class="furn" points="766.6,142.8 766.6,165.2 790.2,165.2 790.2,142.8"/>
+<polygon class="furn" points="837.2,61.6 837.2,71.7 859.6,71.7 859.6,61.6"/>
+<polygon class="furn" points="848.4,98.6 850.6,98.2 852.8,97.2 854.7,95.6 856.3,93.5 857.5,91.0 858.2,88.1 858.5,85.1 858.2,82.1 857.5,79.3 856.3,76.7 854.7,74.6 852.8,73.0 850.6,72.0 848.4,71.7 846.2,72.0 844.0,73.0 842.1,74.6 840.5,76.7 839.3,79.3 838.6,82.1 838.3,85.1 838.6,88.1 839.3,91.0 840.5,93.5 842.1,95.6 844.0,97.2 846.2,98.2"/>
+<polygon class="furn" points="873.6,61.6 873.6,82.3 898.8,82.3 898.8,61.6"/>
+<polygon class="furn" points="886.2,78.7 888.3,78.5 890.3,78.0 892.1,77.2 893.6,76.1 894.8,74.9 895.5,73.5 895.7,72.0 895.5,70.5 894.8,69.0 893.6,67.8 892.1,66.7 890.3,65.9 888.3,65.4 886.2,65.2 884.1,65.4 882.1,65.9 880.3,66.7 878.8,67.8 877.6,69.0 876.9,70.5 876.7,72.0 876.9,73.5 877.6,74.9 878.8,76.1 880.3,77.2 882.1,78.0 884.1,78.5"/>
+<polygon class="furn" points="932.4,67.2 932.4,100.8 966.0,100.8 966.0,67.2"/>
+<circle class="furn" cx="949.2" cy="84.0" r="12.3"/>
+<polygon class="furn" points="936.3,115.9 936.3,149.5 968.8,149.5 968.8,115.9"/>
+<polygon class="furn" points="940.8,120.4 940.8,145.0 959.3,145.0 959.3,120.4"/>
+<circle class="plant" cx="1201.2" cy="224.0" r="42.0"/>
+<circle class="plant" cx="1229.2" cy="95.2" r="22.4"/>
+<circle class="plant" cx="1016.4" cy="246.4" r="16.8"/>
+<polyline class="furnlight" points="1061.2,84.0 1162.0,84.0"/>
+<polyline class="furnlight" points="1061.2,106.4 1162.0,106.4"/>
+<polyline class="furn" points="1061.2,75.6 1061.2,114.8"/>
+<polyline class="furn" points="1162.0,75.6 1162.0,114.8"/>
+<polygon class="paver" points="1008.0,170.8 1008.0,204.4 1027.6,204.4 1027.6,170.8"/>
+<polygon class="paver" points="1036.0,170.8 1036.0,204.4 1055.6,204.4 1055.6,170.8"/>
+<polygon class="paver" points="1064.0,170.8 1064.0,204.4 1083.6,204.4 1083.6,170.8"/>
+<path class="wall" fill-rule="evenodd" d="M162.4,218.4 L154.0,218.4 L154.0,212.8 L162.4,212.8 L162.4,218.4 Z M154.0,61.6 L154.0,53.2 L977.2,53.2 L977.2,61.6 L977.2,75.6 L968.8,75.6 L968.8,61.6 L826.0,61.6 L826.0,156.8 L876.4,156.8 L876.4,162.4 L826.0,162.4 L820.4,162.4 L820.4,61.6 L470.4,61.6 L470.4,126.0 L462.0,126.0 L462.0,61.6 L154.0,61.6 Z M977.2,170.8 L968.8,170.8 L968.8,162.4 L915.6,162.4 L915.6,156.8 L968.8,156.8 L968.8,142.8 L977.2,142.8 L977.2,170.8 Z M977.2,268.8 L977.2,277.2 L154.0,277.2 L154.0,268.8 L462.0,268.8 L462.0,260.4 L470.4,260.4 L470.4,268.8 L968.8,268.8 L968.8,260.4 L977.2,260.4 L977.2,268.8 Z M462.0,193.2 L470.4,193.2 L470.4,210.0 L462.0,210.0 L462.0,193.2 Z"/>
+<path class="muro" fill-rule="evenodd" d="M977.2,53.2 L1274.0,53.2 L1274.0,61.6 L1274.0,268.8 L1274.0,277.2 L977.2,277.2 L977.2,268.8 L1265.6,268.8 L1265.6,61.6 L977.2,61.6 L977.2,53.2 Z"/>
+<polyline class="elevlight" points="70.0,19.6 70.0,310.8"/>
+<polyline class="win" points="462.0,126.0 462.0,193.2"/>
+<polyline class="win" points="470.4,126.0 470.4,193.2"/>
+<polyline class="glass" points="465.2,126.0 465.2,193.2"/>
+<polyline class="glass" points="467.2,126.0 467.2,193.2"/>
+<polyline class="door" points="470.4,260.4 520.8,260.4"/>
+<polyline class="swing" points="470.4,210.0 474.8,210.2 479.2,210.8 483.4,211.7 487.6,213.0 491.7,214.7 495.6,216.8 499.3,219.1 502.8,221.8 506.0,224.8 509.0,228.0 511.7,231.5 514.0,235.2 516.1,239.1 517.8,243.2 519.1,247.4 520.0,251.6 520.6,256.0 520.8,260.4"/>
+<polyline class="door" points="915.6,156.8 915.6,117.6"/>
+<polyline class="swing" points="876.4,156.8 876.5,153.4 877.0,150.0 877.7,146.7 878.8,143.4 880.1,140.2 881.7,137.2 883.5,134.3 885.6,131.6 887.9,129.1 890.4,126.8 893.1,124.7 896.0,122.9 899.0,121.3 902.2,120.0 905.5,118.9 908.8,118.2 912.2,117.7 915.6,117.6"/>
+<polyline class="win" points="968.8,75.6 968.8,142.8"/>
+<polyline class="win" points="977.2,75.6 977.2,142.8"/>
+<polyline class="glass" points="972.0,75.6 972.0,142.8"/>
+<polyline class="glass" points="974.0,75.6 974.0,142.8"/>
+<polygon class="leaf" points="970.3,170.8 970.3,219.0 972.8,219.0 972.8,170.8"/>
+<polygon class="leaf" points="973.2,212.2 973.2,260.4 975.7,260.4 975.7,212.2"/>
+<polygon class="leaf" points="154.0,61.6 154.0,212.8 156.8,212.8 156.8,61.6"/>
+<polygon class="hiddenrect" points="156.8,61.6 156.8,212.8 224.0,212.8 224.0,61.6"/>
+<polyline class="door" points="156.8,268.8 207.2,268.8"/>
+<polyline class="swing" points="156.8,218.4 161.2,218.6 165.6,219.2 169.8,220.1 174.0,221.4 178.1,223.1 182.0,225.2 185.7,227.5 189.2,230.2 192.4,233.2 195.4,236.4 198.1,239.9 200.4,243.6 202.5,247.5 204.2,251.6 205.5,255.8 206.4,260.0 207.0,264.4 207.2,268.8"/>
+<polyline class="hidden" points="156.8,218.4 156.8,268.8"/>
+<polyline class="thin" points="470.4,61.6 470.4,112.0"/>
+<polyline class="thin" points="486.1,61.6 486.1,112.0"/>
+<polyline class="thin" points="501.8,61.6 501.8,112.0"/>
+<polyline class="thin" points="517.4,61.6 517.4,112.0"/>
+<polyline class="thin" points="533.1,61.6 533.1,112.0"/>
+<polyline class="thin" points="548.8,61.6 548.8,112.0"/>
+<polyline class="thin" points="564.5,61.6 564.5,112.0"/>
+<polyline class="thin" points="580.2,61.6 580.2,112.0"/>
+<polyline class="hidden" points="595.8,61.6 595.8,112.0"/>
+<polyline class="hidden" points="611.5,61.6 611.5,112.0"/>
+<polyline class="hidden" points="627.2,61.6 627.2,112.0"/>
+<polyline class="hidden" points="642.9,61.6 642.9,112.0"/>
+<polyline class="hidden" points="658.6,61.6 658.6,112.0"/>
+<polyline class="hidden" points="674.2,61.6 674.2,112.0"/>
+<polyline class="hidden" points="689.9,61.6 689.9,112.0"/>
+<polyline class="hidden" points="705.6,61.6 705.6,112.0"/>
+<polyline class="thin" points="582.4,61.6 593.6,112.0"/>
+<circle class="thin" cx="478.2" cy="86.8" r="2.2"/>
+<polyline class="thin" points="478.2,86.8 588.0,86.8"/>
+<polygon class="arrow" points="579.0,82.9 579.0,90.7 586.9,86.8"/>
+<polyline class="rail" points="470.4,112.0 705.6,112.0"/>
+<polyline class="dim" points="154.0,302.4 1274.0,302.4"/>
+<polyline class="dimtick" points="150.1,306.3 157.9,298.5"/>
+<polyline class="dimext" points="154.0,280.6 154.0,306.9"/>
+<polyline class="dimtick" points="458.1,306.3 465.9,298.5"/>
+<polyline class="dimext" points="462.0,280.6 462.0,306.9"/>
+<polyline class="dimtick" points="973.3,306.3 981.1,298.5"/>
+<polyline class="dimext" points="977.2,280.6 977.2,306.9"/>
+<polyline class="dimtick" points="1270.1,306.3 1277.9,298.5"/>
+<polyline class="dimext" points="1274.0,280.6 1274.0,306.9"/>
+<text class="dimtext" x="308.0" y="295.7" font-size="9.5" text-anchor="middle" dominant-baseline="central">5,50 garagem</text>
+<text class="dimtext" x="719.6" y="295.7" font-size="9.5" text-anchor="middle" dominant-baseline="central">9,20 casa</text>
+<text class="dimtext" x="1125.6" y="295.7" font-size="9.5" text-anchor="middle" dominant-baseline="central">5,30 quintal</text>
+<polyline class="dim" points="154.0,330.4 1274.0,330.4"/>
+<polyline class="dimtick" points="150.1,334.3 157.9,326.5"/>
+<polyline class="dimext" points="154.0,280.6 154.0,334.9"/>
+<polyline class="dimtick" points="1270.1,334.3 1277.9,326.5"/>
+<polyline class="dimext" points="1274.0,280.6 1274.0,334.9"/>
+<text class="dimtext" x="714.0" y="323.7" font-size="9.5" text-anchor="middle" dominant-baseline="central">20,00 (profundidade do lote)</text>
+<polyline class="dim" points="462.0,30.8 1265.6,30.8"/>
+<polyline class="dimtick" points="458.1,34.7 465.9,26.9"/>
+<polyline class="dimext" points="462.0,49.8 462.0,26.3"/>
+<polyline class="dimtick" points="466.5,34.7 474.3,26.9"/>
+<polyline class="dimext" points="470.4,49.8 470.4,26.3"/>
+<polyline class="dimtick" points="701.7,34.7 709.5,26.9"/>
+<polyline class="dimext" points="705.6,49.8 705.6,26.3"/>
+<polyline class="dimtick" points="822.1,34.7 829.9,26.9"/>
+<polyline class="dimext" points="826.0,49.8 826.0,26.3"/>
+<polyline class="dimtick" points="964.9,34.7 972.7,26.9"/>
+<polyline class="dimext" points="968.8,49.8 968.8,26.3"/>
+<polyline class="dimtick" points="973.3,34.7 981.1,26.9"/>
+<polyline class="dimext" points="977.2,49.8 977.2,26.3"/>
+<polyline class="dimtick" points="1261.7,34.7 1269.5,26.9"/>
+<polyline class="dimext" points="1265.6,49.8 1265.6,26.3"/>
+<text class="dimtext" x="588.0" y="24.1" font-size="9.5" text-anchor="middle" dominant-baseline="central">4,20</text>
+<text class="dimtext" x="765.8" y="24.1" font-size="9.5" text-anchor="middle" dominant-baseline="central">2,15</text>
+<text class="dimtext" x="897.4" y="24.1" font-size="9.5" text-anchor="middle" dominant-baseline="central">2,55</text>
+<text class="dimtext" x="1121.4" y="24.1" font-size="9.5" text-anchor="middle" dominant-baseline="central">5,15</text>
+<polyline class="dim" points="1299.2,53.2 1299.2,277.2"/>
+<polyline class="dimtick" points="1295.3,57.1 1303.1,49.3"/>
+<polyline class="dimext" points="1277.4,53.2 1303.7,53.2"/>
+<polyline class="dimtick" points="1295.3,65.5 1303.1,57.7"/>
+<polyline class="dimext" points="1277.4,61.6 1303.7,61.6"/>
+<polyline class="dimtick" points="1295.3,272.7 1303.1,264.9"/>
+<polyline class="dimext" points="1277.4,268.8 1303.7,268.8"/>
+<polyline class="dimtick" points="1295.3,281.1 1303.1,273.3"/>
+<polyline class="dimext" points="1277.4,277.2 1303.7,277.2"/>
+<text class="dimtext" x="1292.5" y="165.2" font-size="9.5" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 1292.5 165.2)">3,70</text>
+<polyline class="dim" points="1327.2,53.2 1327.2,277.2"/>
+<polyline class="dimtick" points="1323.3,57.1 1331.1,49.3"/>
+<polyline class="dimext" points="1277.4,53.2 1331.7,53.2"/>
+<polyline class="dimtick" points="1323.3,281.1 1331.1,273.3"/>
+<polyline class="dimext" points="1277.4,277.2 1331.7,277.2"/>
+<text class="dimtext" x="1320.5" y="165.2" font-size="9.5" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 1320.5 165.2)">4,00</text>
+<polyline class="secline" points="14.0,86.8 53.2,86.8"/>
+<polygon class="secarrow" points="28.0,86.8 39.2,86.8 33.6,103.6"/>
+<circle class="secbubble" cx="33.6" cy="63.3" r="11.2"/>
+<polyline class="secline" points="1349.6,86.8 1388.8,86.8"/>
+<polygon class="secarrow" points="1363.6,86.8 1374.8,86.8 1369.2,103.6"/>
+<circle class="secbubble" cx="1369.2" cy="63.3" r="11.2"/>
+<polygon class="barfill" points="16.8,324.8 72.8,324.8 72.8,320.9 16.8,320.9"/>
+<polygon class="barempty" points="72.8,324.8 128.8,324.8 128.8,320.9 72.8,320.9"/>
+<text class="small" x="505.1" y="100.2" font-size="7.8" text-anchor="middle" dominant-baseline="central">SOBE</text>
+<text class="tiny" x="666.4" y="86.8" font-size="6.2" text-anchor="middle" dominant-baseline="central">armário</text>
+<text class="tiny" x="1111.6" y="95.2" font-size="6.7" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 1111.6 95.2)">varal</text>
+<text class="label" x="305.2" y="211.6" font-size="13.4" text-anchor="middle" dominant-baseline="central">GARAGEM</text>
+<text class="sublabel" x="305.2" y="226.2" font-size="9.5" text-anchor="middle" dominant-baseline="central">20,35 m²</text>
+<text class="sublabel" x="305.2" y="238.6" font-size="9.5" text-anchor="middle" dominant-baseline="central">4,00 × 5,50</text>
+<text class="label" x="660.8" y="191.3" font-size="13.4" text-anchor="middle" dominant-baseline="central">SALA + COZINHA</text>
+<text class="sublabel" x="660.8" y="206.2" font-size="10.1" text-anchor="middle" dominant-baseline="central">28,16 m²</text>
+<text class="sublabel" x="660.8" y="219.4" font-size="10.1" text-anchor="middle" dominant-baseline="central">integradas</text>
+<text class="tiny2" x="562.8" y="203.3" font-size="8.4" text-anchor="middle" dominant-baseline="central">estar</text>
+<text class="tiny2" x="712.9" y="117.6" font-size="8.4" text-anchor="middle" dominant-baseline="central">jantar</text>
+<text class="tiny2" x="803.6" y="199.9" font-size="8.4" text-anchor="middle" dominant-baseline="central">cozinha</text>
+<text class="label" x="896.0" y="93.5" font-size="8.4" text-anchor="middle" dominant-baseline="central">LAVABO +</text>
+<text class="label" x="896.0" y="105.3" font-size="8.4" text-anchor="middle" dominant-baseline="central">LAVANDERIA</text>
+<text class="sublabel" x="896.0" y="116.5" font-size="7.3" text-anchor="middle" dominant-baseline="central">4,34 m²</text>
+<text class="label" x="1122.8" y="154.9" font-size="13.4" text-anchor="middle" dominant-baseline="central">QUINTAL</text>
+<text class="sublabel" x="1122.8" y="169.8" font-size="10.1" text-anchor="middle" dominant-baseline="central">19,06 m²</text>
+<text class="sublabel" x="1122.8" y="183.0" font-size="10.1" text-anchor="middle" dominant-baseline="central">área permeável</text>
+<text class="tiny2" x="95.2" y="165.2" font-size="8.4" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 95.2 165.2)">CALÇADA</text>
+<text class="sublabel" x="39.2" y="187.6" font-size="11.2" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 39.2 187.6)">RUA</text>
+<text class="code" x="479.9" y="159.6" font-size="6.7" text-anchor="middle" dominant-baseline="central">J1</text>
+<text class="code" x="479.9" y="235.2" font-size="6.7" text-anchor="middle" dominant-baseline="central">P1</text>
+<text class="code" x="896.0" y="175.3" font-size="6.7" text-anchor="middle" dominant-baseline="central">P3</text>
+<text class="code" x="989.5" y="109.2" font-size="6.7" text-anchor="middle" dominant-baseline="central">J2</text>
+<text class="code" x="989.5" y="215.6" font-size="6.7" text-anchor="middle" dominant-baseline="central">P2</text>
+<text class="tiny" x="136.1" y="137.2" font-size="6.7" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 136.1 137.2)">portão basculante 2,70</text>
+<text class="tiny" x="136.1" y="243.6" font-size="6.7" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 136.1 243.6)">social 0,90</text>
+<text class="secletter" x="33.6" y="63.3" font-size="11.2" text-anchor="middle" dominant-baseline="central">A</text>
+<text class="secletter" x="1369.2" y="63.3" font-size="11.2" text-anchor="middle" dominant-baseline="central">A</text>
+<text class="dimtext" x="16.8" y="312.5" font-size="7.3" text-anchor="middle" dominant-baseline="central">0</text>
+<text class="dimtext" x="72.8" y="312.5" font-size="7.3" text-anchor="middle" dominant-baseline="central">1</text>
+<text class="dimtext" x="128.8" y="312.5" font-size="7.3" text-anchor="middle" dominant-baseline="central">2</text>
+<text class="dimtext" x="142.8" y="322.6" font-size="7.3" text-anchor="middle" dominant-baseline="central">m</text></svg>
